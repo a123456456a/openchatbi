@@ -19,6 +19,12 @@ engine = _engine()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
+def reset_engine() -> None:
+    global engine, SessionLocal
+    engine = _engine()
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
