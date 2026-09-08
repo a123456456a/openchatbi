@@ -90,7 +90,7 @@ def token(body: TokenRequest, db: Session = Depends(get_db)) -> TokenResponse:
 @oauth_router.post("/revoke", status_code=status.HTTP_204_NO_CONTENT)
 def revoke(
     body: RevokeRequest,
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     token_row = (
@@ -98,9 +98,12 @@ def revoke(
         .filter(RefreshToken.token_hash == hash_token(body.refresh_token))
         .first()
     )
-    if token_row is not None and token_row.revoked_at is None:
-        token_row.revoked_at = datetime.now(timezone.utc)
-        db.commit()
+    if token_row is None or token_row.revoked_at is not None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    if token_row.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    token_row.revoked_at = datetime.now(timezone.utc)
+    db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
