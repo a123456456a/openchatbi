@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import backend.auth.models  # noqa: F401
 import backend.db as db
 from backend.auth.routes import auth_router, oauth_router
+from backend.chat.routes import chat_router
 from backend.config import get_settings
 from backend.db import Base
 
@@ -27,6 +28,7 @@ app.add_middleware(
 )
 app.include_router(oauth_router)
 app.include_router(auth_router)
+app.include_router(chat_router)
 
 
 @app.get("/health")
