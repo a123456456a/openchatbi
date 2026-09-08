@@ -4,13 +4,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import backend.auth.models  # noqa: F401
+import backend.db as db
+from backend.auth.routes import auth_router, oauth_router
 from backend.config import get_settings
-from backend.db import Base, engine
+from backend.db import Base
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=db.engine)
     yield
 
 
@@ -23,6 +25,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(oauth_router)
+app.include_router(auth_router)
 
 
 @app.get("/health")
