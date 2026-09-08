@@ -21,6 +21,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 def reset_engine() -> None:
     global engine, SessionLocal
+    engine.dispose()
     engine = _engine()
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
