@@ -5,8 +5,6 @@ export type HttpOptions = RequestInit & {
   skipAuth?: boolean
 }
 
-let refreshInFlight: Promise<boolean> | null = null
-
 function withAuthHeaders(headersInit: HeadersInit | undefined, accessToken: string | null): Headers {
   const headers = new Headers(headersInit)
   if (accessToken && !headers.has('Authorization')) {
@@ -15,19 +13,9 @@ function withAuthHeaders(headersInit: HeadersInit | undefined, accessToken: stri
   return headers
 }
 
-async function singleFlightRefresh(): Promise<boolean> {
-  const auth = useAuthStore()
-  if (!refreshInFlight) {
-    refreshInFlight = auth.refresh().finally(() => {
-      refreshInFlight = null
-    })
-  }
-  return refreshInFlight
-}
-
 /**
- * Authenticated fetch: attaches Bearer access token; on 401 runs a single-flight
- * refresh then retries the request once.
+ * Authenticated fetch: attaches Bearer access token; on 401 runs auth.refresh()
+ * (store-level single-flight) then retries the request once.
  */
 export async function http(input: string, options: HttpOptions = {}): Promise<Response> {
   const { skipAuth = false, headers, ...rest } = options
@@ -45,7 +33,7 @@ export async function http(input: string, options: HttpOptions = {}): Promise<Re
     return res
   }
 
-  const refreshed = await singleFlightRefresh()
+  const refreshed = await auth.refresh()
   if (!refreshed) {
     const { default: router } = await import('../router')
     if (router.currentRoute.value.name !== 'login') {

@@ -12,6 +12,9 @@ import {
 
 const REFRESH_KEY = 'ocbi_refresh'
 
+/** Shared across all callers (router, http, chat) so rotated refresh tokens aren't raced. */
+let refreshInFlight: Promise<boolean> | null = null
+
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref<string | null>(null)
   const userId = ref<string | null>(null)
@@ -53,7 +56,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function refresh(): Promise<boolean> {
+  async function refreshOnce(): Promise<boolean> {
     const rt = getStoredRefresh()
     if (!rt) {
       clearSession()
@@ -75,6 +78,16 @@ export const useAuthStore = defineStore('auth', () => {
       clearSession()
       return false
     }
+  }
+
+  /** Single-flight refresh — safe for concurrent router + http callers. */
+  async function refresh(): Promise<boolean> {
+    if (!refreshInFlight) {
+      refreshInFlight = refreshOnce().finally(() => {
+        refreshInFlight = null
+      })
+    }
+    return refreshInFlight
   }
 
   async function logout() {
