@@ -1,5 +1,7 @@
 from collections.abc import Generator
-from sqlalchemy import create_engine
+
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from backend.config import get_settings
@@ -32,3 +34,18 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def ensure_sqlite_schema(bind: Engine | None = None) -> None:
+    """Add columns that create_all will not alter on an existing SQLite database."""
+    target = bind if bind is not None else engine
+    if target.dialect.name != "sqlite":
+        return
+    inspector = inspect(target)
+    if "users" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("users")}
+    if "active_llm_provider" in columns:
+        return
+    with target.begin() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN active_llm_provider VARCHAR(64)"))

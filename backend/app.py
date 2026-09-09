@@ -19,6 +19,7 @@ from backend.validation import redact_sensitive_fields
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=db.engine)
+    db.ensure_sqlite_schema(db.engine)
     yield
 
 
