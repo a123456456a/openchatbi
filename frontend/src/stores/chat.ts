@@ -36,24 +36,31 @@ export const useChatStore = defineStore('chat', () => {
       id: uid(),
       role: 'user',
       content: input.trim(),
+      thinking: '',
       steps: [],
     }
     messages.value.push(userMsg)
 
-    const assistant: ChatMessage = {
+    messages.value.push({
       id: uid(),
       role: 'assistant',
       content: '',
+      thinking: '',
       steps: [],
       streaming: true,
-    }
-    messages.value.push(assistant)
+    })
+    // Must mutate via the reactive array entry — editing the raw object
+    // pushed earlier does not trigger Vue updates (stays on「思考中…」).
+    const assistantIdx = messages.value.length - 1
+    const assistantMsg = () => messages.value[assistantIdx]!
+
     streaming.value = true
     error.value = null
     lastInterrupt.value = null
     abort = new AbortController()
 
     const applyEvent = (event: StreamEvent) => {
+      const assistant = assistantMsg()
       if (event.type === 'step') {
         const step: ChatStep = {
           id: uid(),
@@ -64,7 +71,12 @@ export const useChatStore = defineStore('chat', () => {
         }
         assistant.steps.push(step)
       } else if (event.type === 'token') {
-        assistant.content += String(event.text ?? '')
+        const text = String(event.text ?? '')
+        if (event.is_final === false) {
+          assistant.thinking += text
+        } else {
+          assistant.content += text
+        }
       } else if (event.type === 'final_answer') {
         const text = String(event.text ?? '')
         if (text) assistant.content = text
@@ -90,11 +102,12 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) {
       if ((e as Error).name === 'AbortError') return
       error.value = e instanceof Error ? e.message : String(e)
+      const assistant = assistantMsg()
       if (!assistant.content) {
         assistant.content = `错误：${error.value}`
       }
     } finally {
-      assistant.streaming = false
+      assistantMsg().streaming = false
       streaming.value = false
       abort = null
     }
