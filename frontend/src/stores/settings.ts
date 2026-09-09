@@ -68,7 +68,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function openSettings() {
     settingsOpen.value = true
-    void load()
   }
 
   function closeSettings() {
