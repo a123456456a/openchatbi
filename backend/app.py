@@ -9,6 +9,7 @@ from backend.auth.routes import auth_router, oauth_router
 from backend.chat.routes import chat_router
 from backend.config import get_settings
 from backend.db import Base
+from backend.llm.routes import llm_settings_router
 from backend.users.routes import download_router, users_router
 
 
@@ -32,6 +33,7 @@ app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(users_router)
 app.include_router(download_router)
+app.include_router(llm_settings_router)
 
 
 @app.get("/health")
