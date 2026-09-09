@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from typing import Any
 
 from openchatbi import config
@@ -10,33 +11,47 @@ from openchatbi.agent_graph import build_agent_graph_async
 from openchatbi.llm.llm import reset_llm_override, set_llm_override
 
 _graphs: dict[str, Any] = {}
-_graphs_lock = asyncio.Lock()
+_graphs_lock = threading.Lock()
+_graphs_build_lock = asyncio.Lock()
 
 
 def graph_cache_key(user_id: str, provider: str, config_hash: str) -> str:
     return f"{user_id}:{provider}:{config_hash}"
 
 
+def _get_cached(key: str) -> Any | None:
+    with _graphs_lock:
+        return _graphs.get(key)
+
+
+def _set_cached(key: str, graph: Any) -> Any:
+    with _graphs_lock:
+        _graphs[key] = graph
+        return graph
+
+
 async def get_or_build_graph(user_id: str, provider: str, llm, config_hash: str):
     """Get a cached graph or build one under the user's LLM override."""
     key = graph_cache_key(user_id, provider, config_hash)
-    if key in _graphs:
-        return _graphs[key]
-    async with _graphs_lock:
-        if key in _graphs:
-            return _graphs[key]
+    cached = _get_cached(key)
+    if cached is not None:
+        return cached
+    async with _graphs_build_lock:
+        cached = _get_cached(key)
+        if cached is not None:
+            return cached
         token = set_llm_override(llm)
         try:
-            _graphs[key] = await build_agent_graph_async(
+            graph = await build_agent_graph_async(
                 config.get().catalog_store, llm_provider=None
             )
         finally:
             reset_llm_override(token)
-        return _graphs[key]
+        return _set_cached(key, graph)
 
 
 def invalidate_graphs_for_user(user_id: str) -> None:
     prefix = f"{user_id}:"
-    for key in list(_graphs):
-        if key.startswith(prefix):
+    with _graphs_lock:
+        for key in [cached_key for cached_key in _graphs if cached_key.startswith(prefix)]:
             del _graphs[key]
