@@ -74,6 +74,7 @@ def test_chat_stream_with_token_returns_ndjson(client):
     mock_graph.aget_state = AsyncMock(return_value=mock_state)
 
     with (
+        patch("backend.chat.routes.resolve_user_chat_llm", return_value=("deepseek", MagicMock(), "a" * 16)),
         patch("backend.chat.routes.get_or_build_graph", new=AsyncMock(return_value=mock_graph)),
         patch("backend.chat.routes.AgentStreamProcessor") as proc_cls,
         patch("backend.chat.routes.extract_final_answer", return_value="hello"),
@@ -120,6 +121,7 @@ def test_chat_stream_ignores_body_user_id(client):
         return {"configurable": {"user_id": user_id}}
 
     with (
+        patch("backend.chat.routes.resolve_user_chat_llm", return_value=("deepseek", MagicMock(), "a" * 16)),
         patch("backend.chat.routes.get_or_build_graph", new=AsyncMock(return_value=mock_graph)),
         patch("backend.chat.routes.AgentStreamProcessor") as proc_cls,
         patch("backend.chat.routes.extract_final_answer", return_value="ok"),

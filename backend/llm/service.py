@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth.models import User, UserLlmConfig
 from backend.llm.crypto import decrypt_api_key, encrypt_api_key, mask_api_key
+from backend.llm.graph_cache import invalidate_graphs_for_user
 from backend.llm.providers import PROVIDER_CATALOG
 from backend.llm.schemas import (
     LlmConfigIn,
@@ -52,7 +53,7 @@ def upsert_settings(db: Session, user: User, update: LlmSettingsUpdate) -> LlmSe
 
     db.commit()
     db.refresh(user)
-    # TODO(task-6): invalidate_graphs_for_user(user.id)
+    invalidate_graphs_for_user(user.id)
     return get_settings_for_user(db, user)
 
 
@@ -64,7 +65,7 @@ def delete_provider(db: Session, user: User, provider: str) -> None:
     if user.active_llm_provider == provider:
         user.active_llm_provider = None
     db.commit()
-    # TODO(task-6): invalidate_graphs_for_user(user.id)
+    invalidate_graphs_for_user(user.id)
 
 
 def _catalog_items() -> list[ProviderCatalogItem]:

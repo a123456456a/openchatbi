@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
+import hashlib
 import json
 from typing import Any
 
+from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 from backend.auth.deps import get_current_user
-from backend.auth.models import User
+from backend.auth.models import User, UserLlmConfig
 from backend.chat.schemas import ChatStreamRequest
-from openchatbi import config
-from openchatbi.agent_graph import build_agent_graph_async
+from backend.db import get_db
+from backend.llm.crypto import decrypt_api_key
+from backend.llm.factory import build_chat_model
+from backend.llm.graph_cache import get_or_build_graph
 from openchatbi.observability.tracing import build_run_config
 from openchatbi.streaming import (
     AgentStreamProcessor,
@@ -28,20 +32,39 @@ from openchatbi.tool.memory import get_async_memory_store
 
 chat_router = APIRouter(prefix="/api", tags=["chat"])
 
-_graphs: dict[str, Any] = {}
-_graphs_lock = asyncio.Lock()
+MISSING_LLM_SETTINGS_DETAIL = "请先在设置中配置模型"
 
 
-async def get_or_build_graph(provider: str | None):
-    """Get (or lazily build) a graph for the requested provider."""
-    key = provider or "__default__"
-    if key in _graphs:
-        return _graphs[key]
-    async with _graphs_lock:
-        if key in _graphs:
-            return _graphs[key]
-        _graphs[key] = await build_agent_graph_async(config.get().catalog_store, llm_provider=provider)
-        return _graphs[key]
+def llm_config_hash(model: str, base_url: str | None, api_key_encrypted: str) -> str:
+    material = f"{model}|{base_url or ''}|{api_key_encrypted[:16]}"
+    return hashlib.sha256(material.encode()).hexdigest()[:16]
+
+
+def resolve_user_chat_llm(db: Session, user: User) -> tuple[str, Any, str]:
+    """Return (provider, llm, config_hash) for the user's active settings."""
+    provider = user.active_llm_provider
+    if not provider:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=MISSING_LLM_SETTINGS_DETAIL)
+
+    row = (
+        db.query(UserLlmConfig)
+        .filter(UserLlmConfig.user_id == user.id, UserLlmConfig.provider == provider)
+        .first()
+    )
+    if row is None or not row.api_key_encrypted:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=MISSING_LLM_SETTINGS_DETAIL)
+
+    try:
+        api_key = decrypt_api_key(row.api_key_encrypted)
+    except InvalidToken as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=MISSING_LLM_SETTINGS_DETAIL) from exc
+
+    try:
+        llm = build_chat_model(provider, api_key, row.model, row.base_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=MISSING_LLM_SETTINGS_DETAIL) from exc
+
+    return provider, llm, llm_config_hash(row.model, row.base_url, row.api_key_encrypted)
 
 
 def _event_to_dict(event) -> dict[str, Any]:
@@ -88,18 +111,21 @@ def _json_safe(obj: Any) -> Any:
 async def chat_stream(
     req: ChatStreamRequest,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Stream agent responses as NDJSON (or legacy plain text).
 
     ``user_id`` is always taken from the authenticated JWT subject.
+    Request body ``provider`` is ignored; the server active provider is used.
     """
     user_id = current_user.id
     session_id = req.session_id or "default"
     stream_input = {"messages": [("user", req.input)]}
     run_config = build_run_config(user_id=user_id, session_id=session_id)
 
+    provider, llm, config_hash = resolve_user_chat_llm(db, current_user)
     try:
-        graph = await get_or_build_graph(req.provider)
+        graph = await get_or_build_graph(user_id, provider, llm, config_hash)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
