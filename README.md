@@ -106,6 +106,25 @@ sudo apt-get install libsqlite3-dev
 
 ### Run Demo
 
+**主路径（Vue + FastAPI，推荐）：**
+
+```bash
+# 终端 1：后端 API（默认 http://localhost:8000）
+uv sync
+uv run python run_backend.py
+
+# 终端 2：前端（默认 http://localhost:5173，已代理 /oauth /api）
+cd frontend
+npm install
+npm run dev
+```
+
+首次打开登录页可点「首次初始化」创建首个 `admin`，或调用 `POST /api/auth/bootstrap`。
+
+角色：`admin` / `analyst` / `viewer`。详见 `docs/superpowers/specs/2026-09-08-vue-oauth-jwt-design.md`。
+
+**样例 UI（demo only，非产品主路径）：**
+
 Run demo using **example dataset** from spider dataset. You need to provide "YOUR OPENAI API KEY" or change config to use other LLM providers.
 
 **Note**: The demo example includes embedding model configuration. If you want to run without an embedding model, you can remove the `embedding_model` section in the config - BM25 retrieval will be used automatically.
@@ -209,17 +228,19 @@ GROUP BY date
 ORDER BY date;
 ```
 
-2. **Sample Web UI:**
+2. **Sample Web UI (demo only):**
 
 Streamlit based UI:
 ```bash
-streamlit run sample_ui streamlit_ui.py
+streamlit run sample_ui/streamlit_ui.py
 ```
 
 Run Gradio based UI:
 ```bash
 python sample_ui/streaming_ui.py
 ```
+
+**Product UI:** see「Run Demo」主路径（`frontend/` + `run_backend.py`）。
 
 3. **Command Line Interface (CLI):**
 
