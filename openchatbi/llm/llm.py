@@ -1,3 +1,4 @@
+import contextvars
 import time
 import traceback
 
@@ -10,6 +11,18 @@ from openchatbi.observability.metrics import LLMCallRecord, record_llm_call
 from openchatbi.observability.pricing import estimate_cost
 from openchatbi.tool.ask_human import AskHuman
 from openchatbi.utils import log
+
+_llm_override: contextvars.ContextVar[BaseChatModel | None] = contextvars.ContextVar(
+    "openchatbi_llm_override", default=None
+)
+
+
+def set_llm_override(llm: BaseChatModel):
+    return _llm_override.set(llm)
+
+
+def reset_llm_override(token):
+    _llm_override.reset(token)
 
 
 def list_llm_providers() -> list[str]:
@@ -43,6 +56,9 @@ def get_embedding_model(provider: str | None = None):
 
 def get_default_llm(provider: str | None = None):
     """Get default LLM from config (optionally scoped to a provider)."""
+    ov = _llm_override.get()
+    if ov is not None:
+        return ov
     provider_cfg = _get_provider_config(provider)
     if provider_cfg:
         return provider_cfg.default_llm
@@ -56,6 +72,9 @@ def get_llm(provider: str | None = None):
 
 def get_text2sql_llm(provider: str | None = None):
     """Get text2sql LLM from config (optionally scoped to a provider)."""
+    ov = _llm_override.get()
+    if ov is not None:
+        return ov
     provider_cfg = _get_provider_config(provider)
     if provider_cfg:
         return provider_cfg.text2sql_llm or provider_cfg.default_llm
@@ -67,6 +86,9 @@ def get_analysis_llm(provider: str | None = None):
 
     Falls back to the default LLM when no dedicated `analysis_llm` is configured.
     """
+    ov = _llm_override.get()
+    if ov is not None:
+        return ov
     provider_cfg = _get_provider_config(provider)
     if provider_cfg:
         return provider_cfg.analysis_llm or provider_cfg.default_llm
