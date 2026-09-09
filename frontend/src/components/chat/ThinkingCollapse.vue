@@ -18,7 +18,7 @@ watch(
     if (streaming) {
       activeNames.value = ['thinking']
     } else if (activeNames.value.includes('thinking') && !streaming) {
-      // 流结束后默认折叠；若用户已手动折叠则保持
+      // 流式进行中自动展开；流结束后默认折叠
       activeNames.value = []
     }
   },

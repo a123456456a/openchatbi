@@ -22,7 +22,7 @@ defineProps<{
       >
         <div class="text-xs opacity-70 mb-1">{{ m.role === 'user' ? '你' : '助手' }}{{ m.streaming ? ' …' : '' }}</div>
         <div class="whitespace-pre-wrap break-words">
-          {{ m.content || (m.streaming ? '' : '') }}
+          {{ m.content || (m.streaming ? '思考中…' : '') }}
         </div>
         <ThinkingCollapse
           v-if="m.role === 'assistant'"
