@@ -1,21 +1,22 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import SettingsDrawer from './SettingsDrawer.vue'
 import SidebarFooter from './SidebarFooter.vue'
+import { useSessionsStore } from '../../stores/sessions'
 
 const route = useRoute()
 const router = useRouter()
-
-const sessions = computed(() => {
-  // Local placeholder list until Task 11 sessions store
-  const id = typeof route.params.sessionId === 'string' ? route.params.sessionId : null
-  return id ? [{ id, title: '当前会话' }] : []
-})
+const sessionsStore = useSessionsStore()
 
 function newChat() {
-  void router.push({ name: 'chat' })
+  const id = crypto.randomUUID()
+  sessionsStore.ensure(id)
+  void router.push({ name: 'chat-session', params: { sessionId: id } })
+}
+
+function openSession(id: string) {
+  void router.push({ name: 'chat-session', params: { sessionId: id } })
 }
 </script>
 
@@ -27,13 +28,16 @@ function newChat() {
         <el-button type="primary" class="w-full" @click="newChat">新建会话</el-button>
       </div>
       <div class="flex-1 overflow-y-auto p-2">
-        <div v-if="sessions.length === 0" class="text-xs text-slate-400 px-2 py-3">暂无会话</div>
+        <div v-if="sessionsStore.sessions.length === 0" class="text-xs text-slate-400 px-2 py-3">
+          暂无会话
+        </div>
         <button
-          v-for="s in sessions"
+          v-for="s in sessionsStore.sessions"
           :key="s.id"
           type="button"
           class="w-full text-left text-sm px-2 py-2 rounded hover:bg-slate-100 truncate"
-          @click="router.push({ name: 'chat-session', params: { sessionId: s.id } })"
+          :class="route.params.sessionId === s.id ? 'bg-slate-100 font-medium' : ''"
+          @click="openSession(s.id)"
         >
           {{ s.title }}
         </button>
@@ -41,7 +45,7 @@ function newChat() {
       <SidebarFooter />
     </aside>
 
-    <section class="flex-1 min-w-0 flex flex-col">
+    <section class="flex-1 min-w-0 flex flex-col min-h-0">
       <slot />
     </section>
 
