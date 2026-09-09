@@ -19,6 +19,7 @@ from backend.db import get_db
 from backend.llm.crypto import decrypt_api_key
 from backend.llm.factory import build_chat_model
 from backend.llm.graph_cache import get_or_build_graph
+from backend.llm.service import DECRYPT_FAILED_DETAIL
 from openchatbi.observability.tracing import build_run_config
 from openchatbi.streaming import (
     AgentStreamProcessor,
@@ -57,12 +58,15 @@ def resolve_user_chat_llm(db: Session, user: User) -> tuple[str, Any, str]:
     try:
         api_key = decrypt_api_key(row.api_key_encrypted)
     except InvalidToken as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=MISSING_LLM_SETTINGS_DETAIL) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=DECRYPT_FAILED_DETAIL,
+        ) from exc
 
     try:
         llm = build_chat_model(provider, api_key, row.model, row.base_url)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=MISSING_LLM_SETTINGS_DETAIL) from exc
+    except (ValueError, ImportError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return provider, llm, llm_config_hash(row.model, row.base_url, row.api_key_encrypted)
 

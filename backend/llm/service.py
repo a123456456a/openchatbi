@@ -14,6 +14,9 @@ from backend.llm.schemas import (
 )
 
 
+DECRYPT_FAILED_DETAIL = "Failed to decrypt API key; please save the key again"
+
+
 class LlmSettingsError(Exception):
     def __init__(self, detail: str):
         super().__init__(detail)
@@ -25,7 +28,8 @@ class ProviderConfigNotFound(LlmSettingsError):
 
 
 class DecryptFailed(LlmSettingsError):
-    pass
+    def __init__(self, detail: str = DECRYPT_FAILED_DETAIL):
+        super().__init__(detail)
 
 
 def get_settings_for_user(db: Session, user: User) -> LlmSettingsResponse:
@@ -145,7 +149,7 @@ def _to_config_out(row: UserLlmConfig) -> LlmConfigOut:
         try:
             plain = decrypt_api_key(row.api_key_encrypted)
         except InvalidToken as exc:
-            raise DecryptFailed("Failed to decrypt API key; please save the key again") from exc
+            raise DecryptFailed() from exc
         masked = mask_api_key(plain)
     return LlmConfigOut(
         provider=row.provider,

@@ -226,7 +226,7 @@ def test_graph_builds_under_llm_override(client):
     assert seen["llm_provider"] is None
 
 
-def test_decrypt_failure_returns_400(client):
+def test_decrypt_failure_returns_500(client):
     tok = _bootstrap_admin(client)
     sess = db.SessionLocal()
     try:
@@ -251,5 +251,28 @@ def test_decrypt_failure_returns_400(client):
             headers=_auth(tok["access_token"]),
             json={"input": "hi", "session_id": "s1", "mode": "events"},
         )
+    assert r.status_code == 500
+    detail = r.json()["detail"]
+    assert "decrypt" in detail.lower()
+    assert "save" in detail.lower()
+    assert "请先在设置中配置模型" not in detail
+
+
+def test_factory_value_error_surfaces_to_client(client):
+    tok = _bootstrap_admin(client)
+    _put_deepseek(client, tok["access_token"])
+    factory_error = "langchain-google-genai is not installed; install the google-genai extra to use Gemini"
+
+    with (
+        patch("backend.chat.routes.build_chat_model", side_effect=ValueError(factory_error)),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock(return_value=_mock_graph())),
+    ):
+        r = client.post(
+            "/api/chat/stream",
+            headers=_auth(tok["access_token"]),
+            json={"input": "hi", "session_id": "s1", "mode": "events"},
+        )
+
     assert r.status_code == 400
-    assert "设置" in r.json()["detail"]
+    assert r.json()["detail"] == factory_error
+    assert "请先在设置中配置模型" not in r.json()["detail"]
