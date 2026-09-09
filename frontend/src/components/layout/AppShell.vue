@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 
-import SettingsDrawer from './SettingsDrawer.vue'
+import SettingsDialog from './SettingsDialog.vue'
 import SidebarFooter from './SidebarFooter.vue'
 import { useSessionsStore } from '../../stores/sessions'
 
@@ -49,6 +49,6 @@ function openSession(id: string) {
       <slot />
     </section>
 
-    <SettingsDrawer />
+    <SettingsDialog />
   </div>
 </template>

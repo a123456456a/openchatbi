@@ -51,9 +51,3 @@ export const LLM_PROVIDER_CATALOG: LlmProviderCatalogEntry[] = [
     requires_base_url: true,
   },
 ]
-
-/** Temporary for SettingsDrawer until Task 8 replaces it with SettingsDialog. */
-export const PROVIDER_OPTIONS = [
-  { label: '默认', value: '' },
-  ...LLM_PROVIDER_CATALOG.map((p) => ({ label: p.label, value: p.id })),
-] as const

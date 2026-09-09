@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 
 import {
   deleteLlmProvider,
@@ -80,20 +80,6 @@ export const useSettingsStore = defineStore('settings', () => {
     return activeProvider.value
   }
 
-  /** @deprecated SettingsDrawer compat — use activeProvider. */
-  const provider = computed({
-    get: () => activeProvider.value ?? '',
-    set: (value: string) => {
-      activeProvider.value = value || null
-    },
-  })
-
-  /** @deprecated SettingsDrawer compat — only updates active_provider. */
-  async function setProvider(value: string) {
-    const data = await saveLlmSettings({ active_provider: value || null })
-    applyResponse(data)
-  }
-
   return {
     activeProvider,
     configs,
@@ -107,7 +93,5 @@ export const useSettingsStore = defineStore('settings', () => {
     openSettings,
     closeSettings,
     chatProvider,
-    provider,
-    setProvider,
   }
 })
