@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     jwt_secret: str = Field(default="dev-only-change-me", alias="JWT_SECRET")
+    llm_settings_secret: str | None = Field(default=None, alias="LLM_SETTINGS_SECRET")
     access_token_minutes: int = 30
     refresh_token_days: int = 14
     database_url: str = Field(default="sqlite:///./data/auth.db", alias="AUTH_DATABASE_URL")
