@@ -220,6 +220,7 @@ openspec
 .cursor
 .claude
 chroma_db_new
+.chroma_db/
 # SDD scratch
 .superpowers/
 
