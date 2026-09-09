@@ -281,3 +281,22 @@ def test_unauthenticated_settings_rejected(client):
     assert g.status_code == 401
     p = client.put("/api/me/llm-settings", json={})
     assert p.status_code == 401
+
+
+def test_validation_error_redacts_api_key(client):
+    tok = _bootstrap_admin(client)
+    secret_key = "sk-live-abcdef1234567890abcdef1234567890"
+    r = client.put(
+        "/api/me/llm-settings",
+        headers=_auth(tok["access_token"]),
+        json={
+            "configs": [
+                {
+                    "provider": "deepseek",
+                    "api_key": secret_key,
+                }
+            ],
+        },
+    )
+    assert r.status_code == 422
+    assert secret_key not in r.text

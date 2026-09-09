@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 import backend.auth.models  # noqa: F401
 import backend.db as db
@@ -11,6 +13,7 @@ from backend.config import get_settings
 from backend.db import Base
 from backend.llm.routes import llm_settings_router
 from backend.users.routes import download_router, users_router
+from backend.validation import redact_sensitive_fields
 
 
 @asynccontextmanager
@@ -21,6 +24,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="OpenChatBI API", lifespan=lifespan)
 settings = get_settings()
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"detail": redact_sensitive_fields(exc.errors())},
+    )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
