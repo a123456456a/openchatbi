@@ -1,44 +1,113 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
-const PROVIDER_KEY = 'ocbi_provider'
+import {
+  deleteLlmProvider,
+  fetchLlmSettings,
+  saveLlmSettings,
+  type LlmCatalogItem,
+  type LlmConfigRow,
+  type LlmSettingsResponse,
+} from '../api/llmSettings'
+import { LLM_PROVIDER_CATALOG } from '../constants/llmProviders'
 
-/** Hard-coded providers until GET /api/llm/providers exists. */
-export const PROVIDER_OPTIONS = [
-  { label: '默认', value: '' },
-  { label: 'OpenAI', value: 'openai' },
-  { label: 'Anthropic', value: 'anthropic' },
-] as const
+export type SettingsForm = {
+  provider: string
+  api_key: string
+  model: string
+  base_url: string
+}
 
 export const useSettingsStore = defineStore('settings', () => {
-  const provider = ref<string>(localStorage.getItem(PROVIDER_KEY) ?? '')
+  const activeProvider = ref<string | null>(null)
+  const configs = ref<LlmConfigRow[]>([])
+  const catalog = ref<LlmCatalogItem[]>([...LLM_PROVIDER_CATALOG])
   const settingsOpen = ref(false)
+  const loading = ref(false)
+  const error = ref<string | null>(null)
 
-  function setProvider(value: string) {
-    provider.value = value
-    if (value) localStorage.setItem(PROVIDER_KEY, value)
-    else localStorage.removeItem(PROVIDER_KEY)
+  function applyResponse(data: LlmSettingsResponse) {
+    activeProvider.value = data.active_provider
+    configs.value = data.configs
+    catalog.value = data.catalog
+  }
+
+  async function load() {
+    loading.value = true
+    error.value = null
+    try {
+      const data = await fetchLlmSettings()
+      applyResponse(data)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function save(form: SettingsForm) {
+    const data = await saveLlmSettings({
+      active_provider: form.provider || null,
+      configs: [
+        {
+          provider: form.provider,
+          ...(form.api_key ? { api_key: form.api_key } : {}),
+          model: form.model,
+          base_url: form.base_url || null,
+        },
+      ],
+    })
+    applyResponse(data)
+  }
+
+  async function removeProvider(provider: string) {
+    await deleteLlmProvider(provider)
+    await load()
   }
 
   function openSettings() {
     settingsOpen.value = true
+    void load()
   }
 
   function closeSettings() {
     settingsOpen.value = false
   }
 
-  /** Value to send on chat requests (`null` means backend default). */
+  /** Value to send on chat requests (`null` means backend default / active_provider). */
   function chatProvider(): string | null {
-    return provider.value || null
+    return activeProvider.value
+  }
+
+  /** @deprecated SettingsDrawer compat — use activeProvider. */
+  const provider = computed({
+    get: () => activeProvider.value ?? '',
+    set: (value: string) => {
+      activeProvider.value = value || null
+    },
+  })
+
+  /** @deprecated SettingsDrawer compat — only updates active_provider. */
+  async function setProvider(value: string) {
+    const data = await saveLlmSettings({ active_provider: value || null })
+    applyResponse(data)
   }
 
   return {
-    provider,
+    activeProvider,
+    configs,
+    catalog,
     settingsOpen,
-    setProvider,
+    loading,
+    error,
+    load,
+    save,
+    removeProvider,
     openSettings,
     closeSettings,
     chatProvider,
+    provider,
+    setProvider,
   }
 })

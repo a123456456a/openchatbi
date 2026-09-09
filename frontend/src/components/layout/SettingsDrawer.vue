@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { PROVIDER_OPTIONS, useSettingsStore } from '../../stores/settings'
+import { PROVIDER_OPTIONS } from '../../constants/llmProviders'
+import { useSettingsStore } from '../../stores/settings'
 
 const settings = useSettingsStore()
 </script>

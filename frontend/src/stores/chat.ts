@@ -28,6 +28,7 @@ export const useChatStore = defineStore('chat', () => {
 
     const sessions = useSessionsStore()
     const settings = useSettingsStore()
+    const provider = settings.chatProvider()
     sessions.ensure(sessionId)
     sessions.upsert(sessionId, input.trim().slice(0, 40))
 
@@ -80,7 +81,7 @@ export const useChatStore = defineStore('chat', () => {
         {
           input: input.trim(),
           session_id: sessionId,
-          provider: settings.chatProvider(),
+          provider,
           mode: 'events',
         },
         applyEvent,
