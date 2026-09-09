@@ -115,13 +115,19 @@ uv run python run_backend.py
 
 # 终端 2：前端（默认 http://localhost:5173，已代理 /oauth /api）
 cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 首次打开登录页可点「首次初始化」创建首个 `admin`，或调用 `POST /api/auth/bootstrap`。
 
 角色：`admin` / `analyst` / `viewer`。详见 `docs/superpowers/specs/2026-09-08-vue-oauth-jwt-design.md`。
+
+**用户 LLM 设置（主路径）：**
+
+登录后点击侧栏底栏齿轮图标，打开「模型设置」Dialog。选择供应商（DeepSeek、智谱、OpenAI、Anthropic、Gemini、OpenAI 兼容等），填写 API Key、模型名，必要时填写 Base URL（OpenAI 兼容必填），保存后设为当前活跃供应商。
+
+主路径聊天完全由每位用户自己的配置驱动：服务端按 `active_llm_provider` 与加密存储的 Key 动态建连，**不再**使用 `config.yaml` 里 `llm_providers` 的下拉切换。未配置 Key 时聊天会返回 400。`GET /api/me/llm-settings` 仅返回掩码后的 Key 与 `has_key`，完整 Key 不会下发给其他用户。
 
 **样例 UI（demo only，非产品主路径）：**
 
