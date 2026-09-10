@@ -1,8 +1,17 @@
-import { MessageSquare, Plus } from 'lucide-react'
+import { Archive, ArchiveRestore, ChevronRight, MessageSquare, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useSessionsStore } from '@/stores/sessions'
 import SettingsDialog from './SettingsDialog'
 import SidebarFooter from './SidebarFooter'
@@ -12,6 +21,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const params = useParams()
   const sessions = useSessionsStore((s) => s.sessions)
   const ensure = useSessionsStore((s) => s.ensure)
+  const archive = useSessionsStore((s) => s.archive)
+  const unarchive = useSessionsStore((s) => s.unarchive)
+  const remove = useSessionsStore((s) => s.remove)
+
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
+  const activeSessions = sessions.filter((s) => !s.archived)
+  const archivedSessions = sessions.filter((s) => s.archived)
 
   function newChat() {
     const id = crypto.randomUUID()
@@ -21,6 +38,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   function openSession(id: string) {
     navigate(`/chat/${id}`)
+  }
+
+  function confirmDelete() {
+    if (!pendingDeleteId) return
+    const deletingCurrent = params.sessionId === pendingDeleteId
+    remove(pendingDeleteId)
+    setPendingDeleteId(null)
+    if (deletingCurrent) newChat()
   }
 
   return (
@@ -48,26 +73,94 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto p-2" aria-label="会话列表">
-          {sessions.length === 0 ? (
+          {activeSessions.length === 0 ? (
             <div className="px-3 py-6 text-center text-xs text-[var(--color-muted-foreground)]">
               暂无会话，点击上方开始
             </div>
           ) : (
-            sessions.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className={
-                  'group mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200 ' +
-                  (params.sessionId === s.id
-                    ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
-                    : 'text-slate-600 hover:bg-slate-50')
-                }
-                onClick={() => openSession(s.id)}
-              >
-                <span className="truncate">{s.title}</span>
-              </button>
+            activeSessions.map((s) => (
+              <div key={s.id} className="mb-0.5 flex items-center gap-1">
+                <button
+                  type="button"
+                  className={
+                    'flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200 ' +
+                    (params.sessionId === s.id
+                      ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
+                      : 'text-slate-600 hover:bg-slate-50')
+                  }
+                  onClick={() => openSession(s.id)}
+                >
+                  <span className="truncate">{s.title}</span>
+                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="会话操作"
+                      className="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100 data-open:bg-slate-100"
+                    >
+                      <MoreHorizontal size={16} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => archive(s.id)}>
+                      <Archive size={14} className="mr-1.5" />
+                      归档
+                    </DropdownMenuItem>
+                    <DropdownMenuItem variant="destructive" onSelect={() => setPendingDeleteId(s.id)}>
+                      <Trash2 size={14} className="mr-1.5" />
+                      删除
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             ))
+          )}
+
+          {archivedSessions.length > 0 && (
+            <Collapsible className="mt-2 border-t border-[var(--color-border)] pt-2">
+              <CollapsibleTrigger className="group/archive-trigger flex w-full items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--color-muted-foreground)] hover:bg-slate-50 hover:text-[var(--color-foreground)]">
+                <ChevronRight size={12} className="transition-transform duration-150 data-open:rotate-90" />
+                已归档（{archivedSessions.length}）
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-0.5 space-y-0.5">
+                {archivedSessions.map((s) => (
+                  <div
+                    key={s.id}
+                    className={
+                      'flex min-w-0 items-center gap-1 rounded-lg px-3 py-2 text-sm text-slate-500 ' +
+                      (params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-slate-50')
+                    }
+                  >
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 cursor-pointer truncate text-left"
+                      onClick={() => openSession(s.id)}
+                    >
+                      {s.title}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="恢复会话"
+                      title="恢复"
+                      className="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100"
+                      onClick={() => unarchive(s.id)}
+                    >
+                      <ArchiveRestore size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="删除会话"
+                      title="删除"
+                      className="shrink-0 rounded-md p-1.5 text-[var(--color-destructive)] hover:bg-red-50"
+                      onClick={() => setPendingDeleteId(s.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
           )}
         </nav>
 
@@ -77,6 +170,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</section>
 
       <SettingsDialog />
+
+      <Dialog open={!!pendingDeleteId} onOpenChange={(open) => !open && setPendingDeleteId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除会话</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">删除后该会话的对话历史将无法恢复，确认删除吗？</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDeleteId(null)}>
+              取消
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

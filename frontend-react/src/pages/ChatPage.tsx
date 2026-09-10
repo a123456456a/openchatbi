@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import AppShell from '@/components/layout/AppShell'
@@ -24,9 +24,7 @@ export default function ChatPage() {
   const error = useChatStore((s) => s.error)
   const send = useChatStore((s) => s.send)
   const stop = useChatStore((s) => s.stop)
-  const clear = useChatStore((s) => s.clear)
-
-  const prevSessionId = useRef<string | undefined>(undefined)
+  const loadSession = useChatStore((s) => s.loadSession)
 
   useEffect(() => {
     if (!sessionId) {
@@ -38,11 +36,8 @@ export default function ChatPage() {
   }, [sessionId])
 
   useEffect(() => {
-    if (sessionId !== prevSessionId.current) {
-      clear()
-      prevSessionId.current = sessionId
-    }
-  }, [sessionId, clear])
+    if (sessionId) loadSession(sessionId)
+  }, [sessionId, loadSession])
 
   function onSend(text: string) {
     if (!sessionId) return

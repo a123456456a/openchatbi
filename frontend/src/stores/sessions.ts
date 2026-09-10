@@ -1,13 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import type { ChatMessage } from '../types/stream'
+
 export type SessionMeta = {
   id: string
   title: string
   updatedAt: number
+  archived?: boolean
 }
 
-const SESSIONS_KEY = 'ocbi_sessions'
+export const SESSIONS_KEY = 'ocbi_sessions'
+export const SESSION_MESSAGES_KEY = 'ocbi_session_messages'
+
+type SessionMessagesMap = Record<string, ChatMessage[]>
 
 function load(): SessionMeta[] {
   try {
@@ -21,6 +27,20 @@ function load(): SessionMeta[] {
 
 function save(list: SessionMeta[]) {
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(list))
+}
+
+function loadMessages(): SessionMessagesMap {
+  try {
+    const raw = localStorage.getItem(SESSION_MESSAGES_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw) as SessionMessagesMap
+  } catch {
+    return {}
+  }
+}
+
+function saveMessages(map: SessionMessagesMap) {
+  localStorage.setItem(SESSION_MESSAGES_KEY, JSON.stringify(map))
 }
 
 export const useSessionsStore = defineStore('sessions', () => {
@@ -50,5 +70,37 @@ export const useSessionsStore = defineStore('sessions', () => {
     if (!sessions.value.some((s) => s.id === id)) upsert(id)
   }
 
-  return { sessions, upsert, ensure }
+  function getMessages(id: string): ChatMessage[] {
+    const map = loadMessages()
+    return map[id] ?? []
+  }
+
+  function setMessages(id: string, messages: ChatMessage[]) {
+    const map = loadMessages()
+    map[id] = messages
+    saveMessages(map)
+  }
+
+  function archive(id: string) {
+    sessions.value = sessions.value.map((s) => (s.id === id ? { ...s, archived: true } : s))
+    save(sessions.value)
+  }
+
+  function unarchive(id: string) {
+    sessions.value = sessions.value.map((s) => (s.id === id ? { ...s, archived: false } : s))
+    save(sessions.value)
+  }
+
+  function remove(id: string) {
+    sessions.value = sessions.value.filter((s) => s.id !== id)
+    save(sessions.value)
+
+    const map = loadMessages()
+    if (id in map) {
+      delete map[id]
+      saveMessages(map)
+    }
+  }
+
+  return { sessions, upsert, ensure, getMessages, setMessages, archive, unarchive, remove }
 })

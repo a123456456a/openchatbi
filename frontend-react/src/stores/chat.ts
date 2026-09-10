@@ -12,10 +12,12 @@ function uid() {
 }
 
 type ChatState = {
+  sessionId: string | null
   messages: ChatMessage[]
   streaming: boolean
   lastInterrupt: { text: string; buttons: unknown[] } | null
   error: string | null
+  loadSession: (sessionId: string) => void
   clear: () => void
   send: (sessionId: string, input: string) => Promise<void>
   stop: () => void
@@ -24,10 +26,23 @@ type ChatState = {
 let abortController: AbortController | null = null
 
 export const useChatStore = create<ChatState>((set, get) => ({
+  sessionId: null,
   messages: [],
   streaming: false,
   lastInterrupt: null,
   error: null,
+
+  loadSession(sessionId) {
+    if (get().sessionId === sessionId) return
+    if (get().streaming) get().stop()
+    set({
+      sessionId,
+      messages: useSessionsStore.getState().getMessages(sessionId),
+      lastInterrupt: null,
+      error: null,
+      streaming: false,
+    })
+  },
 
   clear() {
     set({ messages: [], lastInterrupt: null, error: null })
@@ -40,6 +55,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const provider = useSettingsStore.getState().chatProvider()
     sessions.ensure(sessionId)
     sessions.upsert(sessionId, input.trim().slice(0, 40))
+
+    const isActive = () => get().sessionId === sessionId
 
     const userMsg: ChatMessage = {
       id: uid(),
@@ -59,29 +76,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: true,
     }
 
-    set((state) => ({ messages: [...state.messages, userMsg, assistantMsg] }))
-    set({ streaming: true, error: null, lastInterrupt: null })
+    // Own reference to this session's transcript, independent of whichever
+    // session is currently displayed — so a background send (after the user
+    // navigates away) keeps writing into the *right* session's history
+    // instead of leaking into (or being overwritten by) the active view.
+    const baseMessages = isActive() ? get().messages : sessions.getMessages(sessionId)
+    const localMessages = [...baseMessages, userMsg, assistantMsg]
+    sessions.setMessages(sessionId, localMessages)
+
+    if (isActive()) {
+      set({ messages: localMessages, streaming: true, error: null, lastInterrupt: null })
+    }
     abortController = new AbortController()
+    const controller = abortController
 
     const applyEvent = (event: StreamEvent) => {
       if (event.type === 'interrupt') {
-        set({
-          lastInterrupt: {
-            text: String(event.text ?? ''),
-            buttons: Array.isArray(event.buttons) ? event.buttons : [],
-          },
-        })
+        if (isActive()) {
+          set({
+            lastInterrupt: {
+              text: String(event.text ?? ''),
+              buttons: Array.isArray(event.buttons) ? event.buttons : [],
+            },
+          })
+        }
         return
       }
       applyStreamEvent(assistantMsg, event)
-      set((state) => ({ messages: [...state.messages] }))
+      sessions.setMessages(sessionId, localMessages)
+      if (isActive()) set((state) => ({ messages: [...state.messages] }))
     }
 
     try {
       await streamChat(
         { input: input.trim(), session_id: sessionId, provider, mode: 'events' },
         applyEvent,
-        abortController.signal,
+        controller.signal,
         {
           getAccessToken: () => useAuthStore.getState().accessToken,
           getStoredRefresh: () => useAuthStore.getState().getStoredRefresh(),
@@ -91,18 +121,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return
       const message = e instanceof Error ? e.message : String(e)
-      set({ error: message })
+      if (isActive()) set({ error: message })
       if (!assistantMsg.content) {
         assistantMsg.content = `错误：${message}`
       }
     } finally {
       assistantMsg.streaming = false
-      set((state) => ({ streaming: false, messages: [...state.messages] }))
-      abortController = null
+      sessions.setMessages(sessionId, localMessages)
+      if (isActive()) set((state) => ({ streaming: false, messages: [...state.messages] }))
+      if (abortController === controller) abortController = null
     }
   },
 
   stop() {
     abortController?.abort()
+    abortController = null
+    set({ streaming: false })
   },
 }))
