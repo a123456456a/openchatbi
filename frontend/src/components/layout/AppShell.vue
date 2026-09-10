@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ChatDotRound, Plus } from '@element-plus/icons-vue'
+import { computed } from 'vue'
+import { ChatDotRound, Delete, MoreFilled, Plus, RefreshLeft } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
 import SettingsDialog from './SettingsDialog.vue'
@@ -10,6 +12,9 @@ const route = useRoute()
 const router = useRouter()
 const sessionsStore = useSessionsStore()
 
+const activeSessions = computed(() => sessionsStore.sessions.filter((s) => !s.archived))
+const archivedSessions = computed(() => sessionsStore.sessions.filter((s) => s.archived))
+
 function newChat() {
   const id = crypto.randomUUID()
   sessionsStore.ensure(id)
@@ -18,6 +23,28 @@ function newChat() {
 
 function openSession(id: string) {
   void router.push({ name: 'chat-session', params: { sessionId: id } })
+}
+
+function onSessionCommand(command: string) {
+  const [action, id] = command.split(':', 2) as [string, string]
+  if (action === 'archive') sessionsStore.archive(id)
+  else if (action === 'unarchive') sessionsStore.unarchive(id)
+  else if (action === 'delete') confirmDelete(id)
+}
+
+async function confirmDelete(id: string) {
+  try {
+    await ElMessageBox.confirm('删除后该会话的对话历史将无法恢复，确认删除吗？', '删除会话', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  const deletingCurrent = route.params.sessionId === id
+  sessionsStore.remove(id)
+  if (deletingCurrent) newChat()
 }
 </script>
 
@@ -49,25 +76,79 @@ function openSession(id: string) {
 
       <nav class="flex-1 overflow-y-auto p-2" aria-label="会话列表">
         <div
-          v-if="sessionsStore.sessions.length === 0"
+          v-if="activeSessions.length === 0"
           class="px-3 py-6 text-center text-xs text-[var(--color-muted-foreground)]"
         >
           暂无会话，点击上方开始
         </div>
-        <button
-          v-for="s in sessionsStore.sessions"
-          :key="s.id"
-          type="button"
-          class="group mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200"
-          :class="
-            route.params.sessionId === s.id
-              ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
-              : 'text-slate-600 hover:bg-slate-50'
-          "
-          @click="openSession(s.id)"
-        >
-          <span class="truncate">{{ s.title }}</span>
-        </button>
+        <div v-for="s in activeSessions" :key="s.id" class="mb-0.5 flex items-center gap-1">
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200"
+            :class="
+              route.params.sessionId === s.id
+                ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
+                : 'text-slate-600 hover:bg-slate-50'
+            "
+            @click="openSession(s.id)"
+          >
+            <span class="truncate">{{ s.title }}</span>
+          </button>
+          <el-dropdown trigger="click" @command="onSessionCommand">
+            <button
+              type="button"
+              aria-label="会话操作"
+              class="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100"
+            >
+              <el-icon :size="16"><MoreFilled /></el-icon>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item :command="`archive:${s.id}`">归档</el-dropdown-item>
+                <el-dropdown-item :command="`delete:${s.id}`" divided class="!text-red-600">
+                  删除
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+
+        <el-collapse v-if="archivedSessions.length > 0" class="ocbi-archive-collapse mt-2">
+          <el-collapse-item :title="`已归档（${archivedSessions.length}）`" name="archived">
+            <div
+              v-for="s in archivedSessions"
+              :key="s.id"
+              class="flex min-w-0 items-center gap-1 rounded-lg px-3 py-2 text-sm text-slate-500"
+              :class="route.params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-slate-50'"
+            >
+              <button
+                type="button"
+                class="min-w-0 flex-1 cursor-pointer truncate text-left"
+                @click="openSession(s.id)"
+              >
+                {{ s.title }}
+              </button>
+              <button
+                type="button"
+                aria-label="恢复会话"
+                title="恢复"
+                class="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100"
+                @click="sessionsStore.unarchive(s.id)"
+              >
+                <el-icon :size="14"><RefreshLeft /></el-icon>
+              </button>
+              <button
+                type="button"
+                aria-label="删除会话"
+                title="删除"
+                class="shrink-0 rounded-md p-1.5 text-red-600 hover:bg-red-50"
+                @click="confirmDelete(s.id)"
+              >
+                <el-icon :size="14"><Delete /></el-icon>
+              </button>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </nav>
 
       <SidebarFooter />
@@ -80,3 +161,27 @@ function openSession(id: string) {
     <SettingsDialog />
   </div>
 </template>
+
+<style scoped>
+.ocbi-archive-collapse :deep(.el-collapse-item__header) {
+  border: none;
+  height: auto;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-muted-foreground);
+  background: transparent;
+}
+
+.ocbi-archive-collapse :deep(.el-collapse-item__wrap),
+.ocbi-archive-collapse :deep(.el-collapse-item__content) {
+  border: none;
+  padding: 0;
+}
+
+.ocbi-archive-collapse {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.25rem;
+}
+</style>

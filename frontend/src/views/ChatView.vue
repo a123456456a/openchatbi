@@ -36,9 +36,10 @@ onMounted(() => {
 
 watch(
   () => route.params.sessionId,
-  (id, prev) => {
-    if (id !== prev) chat.clear()
+  (id) => {
+    if (typeof id === 'string' && id) chat.loadSession(id)
   },
+  { immediate: true },
 )
 
 async function onSend() {
