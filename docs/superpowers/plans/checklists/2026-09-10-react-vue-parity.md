@@ -22,8 +22,8 @@
 | 流式聊天（NDJSON） | ✅ `api/chat.ts` | ✅ `api/chat.ts` + `lib/ndjson.ts`（含单测） | `/api/chat/stream`，`mode: 'events'` |
 | thinking / content 分流（`is_final`） | ✅ `stores/chat.ts` | ✅ `stores/chatEvents.ts`（含单测） | `is_final === false` → thinking |
 | `final_answer` 覆盖 content | ✅ | ✅ | |
-| 步骤（steps）展示 | ✅ `StepCollapse.vue` | ✅ `components/chat/StepCollapse.tsx` | 2026-09-10 修复：`use_tool`（主图）节点此前只处理工具报错，成功的工具结果被静默丢弃、从未到达 UI（只显示前置的「Using tool: ...」调用公告），见 `openchatbi/streaming.py`；现补发 `kind="tool_result"` 步骤。前端同时不再渲染纯「调用」类步骤（`tool`/`tool_call`/`sub_agent`），其余结果类步骤默认展开显示 |
-| 思考过程折叠 | ✅ `ThinkingCollapse.vue` | ✅ `components/chat/ThinkingCollapse.tsx` | 流式中自动展开，结束后自动折叠；2026-09-10 调整消息内排版顺序为「思考过程 → 步骤结果 → 正文」，正文（最终回答）固定渲染在思考/步骤之后 |
+| 步骤（steps）展示 | ✅ `StepCollapse.vue` | ✅ `components/chat/StepCollapse.tsx` | 2026-09-10 修复：`use_tool`（主图）节点此前只处理工具报错，成功的工具结果被静默丢弃、从未到达 UI（只显示前置的「Using tool: ...」调用公告），见 `openchatbi/streaming.py`；现补发 `kind="tool_result"` 步骤。前端同时不再渲染纯「调用」类步骤（`tool`/`tool_call`/`sub_agent`）。2026-09-10 调整：`tool_result` / `tool_error` 的完整内容（`data.result` / `data.error`）渲染在最终正文中，工具折叠面板移到正文之后且默认折叠；SQL / 可视化等过程步骤仍在正文前默认展开 |
+| 思考过程折叠 | ✅ `ThinkingCollapse.vue` | ✅ `components/chat/ThinkingCollapse.tsx` | 流式中自动展开，结束后自动折叠；消息内排版顺序为「思考过程 → 过程步骤（SQL/可视化等）→ 正文（最终回答 + 工具完整结果）→ 工具折叠（默认收起）」 |
 | 停止生成 | ✅ `chat.stop()` | ✅ `chat.stop()`（AbortController） | |
 | interrupt 确认弹窗 | ✅ `InterruptDialog.vue` | ✅ `components/chat/InterruptDialog.tsx` | |
 | 设置 LLM（供应商/Key/模型/Base URL） | ✅ `SettingsDialog.vue` | ✅ `components/layout/SettingsDialog.tsx` | 同 `/api/me/llm-settings`（GET/PUT/DELETE） |
