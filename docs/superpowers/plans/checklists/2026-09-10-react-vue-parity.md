@@ -22,8 +22,8 @@
 | 流式聊天（NDJSON） | ✅ `api/chat.ts` | ✅ `api/chat.ts` + `lib/ndjson.ts`（含单测） | `/api/chat/stream`，`mode: 'events'` |
 | thinking / content 分流（`is_final`） | ✅ `stores/chat.ts` | ✅ `stores/chatEvents.ts`（含单测） | `is_final === false` → thinking |
 | `final_answer` 覆盖 content | ✅ | ✅ | |
-| 步骤（steps）展示 | ✅ `StepCollapse.vue` | ✅ `components/chat/StepCollapse.tsx` | |
-| 思考过程折叠 | ✅ `ThinkingCollapse.vue` | ✅ `components/chat/ThinkingCollapse.tsx` | 流式中自动展开，结束后自动折叠 |
+| 步骤（steps）展示 | ✅ `StepCollapse.vue` | ✅ `components/chat/StepCollapse.tsx` | 2026-09-10 修复：`use_tool`（主图）节点此前只处理工具报错，成功的工具结果被静默丢弃、从未到达 UI（只显示前置的「Using tool: ...」调用公告），见 `openchatbi/streaming.py`；现补发 `kind="tool_result"` 步骤。前端同时不再渲染纯「调用」类步骤（`tool`/`tool_call`/`sub_agent`），其余结果类步骤默认展开显示 |
+| 思考过程折叠 | ✅ `ThinkingCollapse.vue` | ✅ `components/chat/ThinkingCollapse.tsx` | 流式中自动展开，结束后自动折叠；2026-09-10 调整消息内排版顺序为「思考过程 → 步骤结果 → 正文」，正文（最终回答）固定渲染在思考/步骤之后 |
 | 停止生成 | ✅ `chat.stop()` | ✅ `chat.stop()`（AbortController） | |
 | interrupt 确认弹窗 | ✅ `InterruptDialog.vue` | ✅ `components/chat/InterruptDialog.tsx` | |
 | 设置 LLM（供应商/Key/模型/Base URL） | ✅ `SettingsDialog.vue` | ✅ `components/layout/SettingsDialog.tsx` | 同 `/api/me/llm-settings`（GET/PUT/DELETE） |
@@ -32,6 +32,8 @@
 | 消息 / 步骤 Markdown 渲染 | ✅ `components/common/Markdown.vue`（`markdown-it` + DOMPurify，`@tailwindcss/typography`） | ✅ `components/common/Markdown.tsx`（同上） | 2026-09-10 新增：此前消息内容与步骤详情用 `whitespace-pre-wrap` 纯文本渲染，标题/粗体/列表/表格/代码块等均显示原始符号（bug）；现统一走 sanitize 后的 markdown 渲染 |
 | 可视化图表展示（`visualization_dsl` + CSV） | ✅ `components/chat/ChartView.vue`（Chart.js） | ✅ `components/chat/ChartView.tsx`（Chart.js） | 2026-09-10 新增：此前 `ChatStep` 未携带后端 `generate_visualization` 步骤的 `data`（`visualization_dsl` + CSV），图表数据被直接丢弃、无法显示（bug）；现补上 `data` 字段并用 Chart.js 渲染 line/bar/pie/scatter/histogram，`table`/`box` 与 DSL 报错场景渲染为数据表 |
 | 管理员数据库连接管理（增删改/测试连接/切换当前数据源） | ✅ `views/admin/DatabasesView.vue` | ✅ `pages/admin/DatabasesPage.tsx` | 2026-09-10 新增：同 `/api/admin/database-connections`（GET/POST/PATCH/DELETE + `/{id}/activate` + `/test`、`/{id}/test`）；支持 mysql/postgresql/presto/trino/sqlite；激活新连接会热更新 `catalog_store` 的数据仓库配置并清空 agent graph 缓存，无需重启进程；正在使用中的连接不可删除 |
+| 聊天欢迎/空状态界面（居中标题 + 快捷提示） | ✅ `components/chat/ChatWelcome.vue` | ✅ `components/chat/ChatWelcome.tsx` | 2026-09-10 新增：参考 TailGrids AI Chat 模板视觉重构；无消息时展示居中标题「嗨，需要我帮你分析什么？」+ 输入框 + 4 个 BI 场景快捷提示（点击填充输入框，不自动发送）；有消息后切回常规底部输入栏布局。刻意不引入模板中的「Projects」侧栏分组与模型选择下拉（按需求裁剪，本应用无此概念） |
+| 会话侧栏搜索 + 按日期分组（今天/昨天/更早） | ✅ `AppShell.vue` | ✅ `components/layout/AppShell.tsx` | 2026-09-10 新增：按标题本地过滤会话列表；活跃会话按 `updatedAt` 分为「今天/昨天/更早」三组展示 |
 
 ## 已知差异（视觉，非功能性）
 
