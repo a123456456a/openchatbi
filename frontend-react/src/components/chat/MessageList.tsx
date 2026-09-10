@@ -1,6 +1,7 @@
 import { Bot, Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 
+import { assistantCopyText, processSteps, toolBodyText, toolSteps } from '@/lib/chatSteps'
 import type { ChatMessage } from '@/types/stream'
 import Markdown from '../common/Markdown'
 import StepCollapse from './StepCollapse'
@@ -51,22 +52,27 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
 
             <div className="space-y-2.5">
               <ThinkingCollapse thinking={m.thinking} streaming={m.streaming} />
-              <StepCollapse steps={m.steps} />
+              <StepCollapse steps={processSteps(m.steps)} />
 
-              {m.content ? (
-                <div className="text-sm text-slate-800">
-                  <Markdown text={m.content} />
+              {m.content || toolSteps(m.steps).length > 0 ? (
+                <div className="space-y-3 text-sm text-slate-800">
+                  {m.content ? <Markdown text={m.content} /> : null}
+                  {toolSteps(m.steps).map((s) => (
+                    <Markdown key={s.id} text={toolBodyText(s)} />
+                  ))}
                 </div>
               ) : (
                 m.streaming && !m.thinking && m.steps.length === 0 && (
                   <div className="text-sm text-[var(--color-muted-foreground)]">思考中…</div>
                 )
               )}
+
+              <StepCollapse steps={toolSteps(m.steps)} defaultOpen={false} />
             </div>
 
-            {!m.streaming && m.content && (
+            {!m.streaming && (m.content || toolSteps(m.steps).length > 0) && (
               <div className="mt-1.5 flex items-center gap-1">
-                <CopyButton text={m.content} />
+                <CopyButton text={assistantCopyText(m.content, m.steps)} />
               </div>
             )}
           </div>
