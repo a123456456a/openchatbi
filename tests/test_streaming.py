@@ -67,8 +67,41 @@ def test_generic_subagent_node_accepts_overwrite_messages() -> None:
 
     assert len(events) == 1
     assert isinstance(events[0], StreamStep)
-    assert events[0].kind == "generic"
+    assert events[0].kind == "tool_call"
     assert "Using tool: `search_schema`" in events[0].text
+
+
+def test_generic_subagent_node_emits_tool_result_kind() -> None:
+    processor = AgentStreamProcessor()
+    tool_message = ToolMessage(content="42 rows returned", tool_call_id="call_1", name="search_schema")
+
+    events = processor.process((), "updates", {"model": {"messages": [tool_message]}})
+
+    assert len(events) == 1
+    assert isinstance(events[0], StreamStep)
+    assert events[0].kind == "tool_result"
+    assert "Tool `search_schema` result" in events[0].text
+    assert "42 rows returned" in events[0].text
+
+
+def test_use_tool_success_emits_tool_result_step() -> None:
+    """Regression test: a successful tool call used to be silently dropped.
+
+    Only the preceding "Using tool: ..." announcement was ever surfaced; the
+    tool's actual returned result never reached the UI.
+    """
+    processor = AgentStreamProcessor()
+    tool_message = ToolMessage(content="[{'total': 1234}]", tool_call_id="tool_call_1", name="text2sql")
+
+    events = processor.process((), "updates", {"use_tool": {"messages": [tool_message]}})
+
+    assert len(events) == 1
+    step = events[0]
+    assert isinstance(step, StreamStep)
+    assert step.kind == "tool_result"
+    assert "Tool `text2sql` result" in step.text
+    assert "1234" in step.text
+    assert step.data == {"tool": "text2sql", "result": "[{'total': 1234}]"}
 
 
 def test_empty_visualization_update_emits_no_step() -> None:

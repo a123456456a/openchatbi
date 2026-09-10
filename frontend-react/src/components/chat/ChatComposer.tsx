@@ -1,24 +1,31 @@
-import { Send, Square } from 'lucide-react'
-import { type KeyboardEvent, useState } from 'react'
+import { ArrowUp, Square } from 'lucide-react'
+import { type KeyboardEvent } from 'react'
 
-import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 
 export default function ChatComposer({
+  value,
+  onChange,
   streaming,
   onSend,
   onStop,
+  autoFocus,
+  placeholder = '输入数据分析问题，例如：上周销售额按品类汇总…',
+  className,
 }: {
+  value: string
+  onChange: (value: string) => void
   streaming: boolean
-  onSend: (text: string) => void
+  onSend: () => void
   onStop: () => void
+  autoFocus?: boolean
+  placeholder?: string
+  className?: string
 }) {
-  const [input, setInput] = useState('')
-
   function handleSend() {
-    if (!input.trim() || streaming) return
-    onSend(input)
-    setInput('')
+    if (!value.trim() || streaming) return
+    onSend()
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -29,37 +36,47 @@ export default function ChatComposer({
   }
 
   return (
-    <div className="border-t border-[var(--color-border)] bg-[var(--color-card)] p-4">
-      <div className="mx-auto max-w-3xl">
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-3 shadow-[var(--shadow-card)] transition-shadow duration-200 focus-within:border-[var(--color-primary)] focus-within:shadow-md">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            rows={2}
-            placeholder="输入数据分析问题，例如：上周销售额按品类汇总…"
-            disabled={streaming}
-            className="resize-none border-none bg-transparent px-1 py-1 shadow-none focus-visible:ring-0 dark:bg-transparent"
-          />
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <p className="text-xs text-[var(--color-muted-foreground)]">Enter 发送 · Shift+Enter 换行</p>
-            <div className="flex items-center gap-2">
-              {streaming && (
-                <Button variant="outline" className="h-10 min-w-[5.5rem] rounded-xl" onClick={onStop}>
-                  <Square className="mr-1" size={16} />
-                  停止
-                </Button>
-              )}
-              <Button
-                className="h-10 min-w-[5.5rem] rounded-xl"
-                disabled={!input.trim() || streaming}
-                onClick={handleSend}
-              >
-                {!streaming && <Send className="mr-1" size={16} />}
-                发送
-              </Button>
-            </div>
-          </div>
+    <div
+      className={cn(
+        'rounded-3xl border border-[var(--color-border)] bg-[var(--color-card)] p-3 shadow-[var(--shadow-card)] transition-shadow duration-200 focus-within:border-[var(--color-primary)] focus-within:shadow-md',
+        className,
+      )}
+    >
+      <Textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        rows={1}
+        autoFocus={autoFocus}
+        placeholder={placeholder}
+        disabled={streaming}
+        className="max-h-40 min-h-10 resize-none border-none bg-transparent px-2 py-1.5 text-[15px] shadow-none focus-visible:ring-0 dark:bg-transparent"
+      />
+      <div className="mt-1 flex items-center justify-between gap-3 px-1">
+        <p className="text-xs text-[var(--color-muted-foreground)]">Enter 发送 · Shift+Enter 换行</p>
+        <div className="flex items-center gap-2">
+          {streaming ? (
+            <button
+              type="button"
+              aria-label="停止生成"
+              title="停止生成"
+              onClick={onStop}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-foreground)] text-white transition-opacity hover:opacity-90"
+            >
+              <Square size={14} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label="发送"
+              title="发送"
+              disabled={!value.trim()}
+              onClick={handleSend}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-foreground)] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <ArrowUp size={18} />
+            </button>
+          )}
         </div>
       </div>
     </div>

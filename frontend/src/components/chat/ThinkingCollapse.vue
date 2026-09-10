@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { MagicStick } from '@element-plus/icons-vue'
 
 import Markdown from '../common/Markdown.vue'
 
@@ -28,12 +29,17 @@ watch(
 )
 
 const visible = computed(() => Boolean(props.thinking))
+const title = computed(() => `思考过程${props.streaming ? '…' : ''}`)
 </script>
 
 <template>
-  <div v-if="visible" class="mt-3 space-y-1 border-t border-slate-100 pt-2">
+  <div v-if="visible" class="thinking-wrap">
     <el-collapse v-model="activeNames" class="thinking-collapse">
-      <el-collapse-item title="思考过程" name="thinking">
+      <el-collapse-item :title="title" name="thinking">
+        <template #title>
+          <el-icon class="mr-1.5 shrink-0"><MagicStick /></el-icon>
+          <span class="flex-1 text-left">{{ title }}</span>
+        </template>
         <div class="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
           <Markdown :text="thinking" class="text-xs leading-relaxed" />
         </div>
@@ -43,25 +49,31 @@ const visible = computed(() => Boolean(props.thinking))
 </template>
 
 <style scoped>
+.thinking-wrap {
+  border-radius: 0.75rem;
+  border: 1px solid rgb(241 245 249);
+  overflow: hidden;
+}
+
 .thinking-collapse :deep(.el-collapse-item__header) {
   height: auto;
   min-height: 36px;
   font-size: 12px;
   font-weight: 500;
   color: var(--color-muted-foreground);
-  background: transparent;
+  background: rgb(248 250 252 / 0.7);
   border: none;
   line-height: 1.4;
-  padding: 4px 0;
+  padding: 8px 12px;
 }
 
 .thinking-collapse :deep(.el-collapse-item__wrap) {
   border: none;
-  background: transparent;
+  background: rgb(248 250 252 / 0.7);
 }
 
 .thinking-collapse :deep(.el-collapse-item__content) {
-  padding-bottom: 8px;
+  padding: 0 12px 12px;
 }
 
 .thinking-collapse :deep(.el-collapse) {

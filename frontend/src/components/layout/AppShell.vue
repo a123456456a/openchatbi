@@ -1,19 +1,49 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ChatDotRound, Delete, MoreFilled, Plus, RefreshLeft } from '@element-plus/icons-vue'
+import { computed, ref } from 'vue'
+import { ChatDotRound, Delete, MoreFilled, Plus, RefreshLeft, Search } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
 import SettingsDialog from './SettingsDialog.vue'
 import SidebarFooter from './SidebarFooter.vue'
-import { useSessionsStore } from '../../stores/sessions'
+import { useSessionsStore, type SessionMeta } from '../../stores/sessions'
+
+/** Groups sessions into 今天/昨天/更早 buckets by `updatedAt`, newest first within each. */
+function groupByDay(list: SessionMeta[]): { label: string; sessions: SessionMeta[] }[] {
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const todayMs = startOfToday.getTime()
+  const yesterdayMs = todayMs - 24 * 60 * 60 * 1000
+
+  const today: SessionMeta[] = []
+  const yesterday: SessionMeta[] = []
+  const earlier: SessionMeta[] = []
+  for (const s of list) {
+    if (s.updatedAt >= todayMs) today.push(s)
+    else if (s.updatedAt >= yesterdayMs) yesterday.push(s)
+    else earlier.push(s)
+  }
+
+  return [
+    { label: '今天', sessions: today },
+    { label: '昨天', sessions: yesterday },
+    { label: '更早', sessions: earlier },
+  ].filter((g) => g.sessions.length > 0)
+}
 
 const route = useRoute()
 const router = useRouter()
 const sessionsStore = useSessionsStore()
 
-const activeSessions = computed(() => sessionsStore.sessions.filter((s) => !s.archived))
-const archivedSessions = computed(() => sessionsStore.sessions.filter((s) => s.archived))
+const query = ref('')
+const normalizedQuery = computed(() => query.value.trim().toLowerCase())
+function matchesQuery(s: SessionMeta): boolean {
+  return !normalizedQuery.value || s.title.toLowerCase().includes(normalizedQuery.value)
+}
+
+const activeSessions = computed(() => sessionsStore.sessions.filter((s) => !s.archived && matchesQuery(s)))
+const archivedSessions = computed(() => sessionsStore.sessions.filter((s) => s.archived && matchesQuery(s)))
+const groupedActiveSessions = computed(() => groupByDay(activeSessions.value))
 
 function newChat() {
   const id = crypto.randomUUID()
@@ -72,6 +102,13 @@ async function confirmDelete(id: string) {
           <el-icon class="mr-1"><Plus /></el-icon>
           新建会话
         </el-button>
+        <el-input
+          v-model="query"
+          placeholder="搜索会话"
+          aria-label="搜索会话"
+          class="ocbi-session-search mt-2"
+          :prefix-icon="Search"
+        />
       </div>
 
       <nav class="flex-1 overflow-y-auto p-2" aria-label="会话列表">
@@ -79,38 +116,43 @@ async function confirmDelete(id: string) {
           v-if="activeSessions.length === 0"
           class="px-3 py-6 text-center text-xs text-[var(--color-muted-foreground)]"
         >
-          暂无会话，点击上方开始
+          {{ query ? '没有匹配的会话' : '暂无会话，点击上方开始' }}
         </div>
-        <div v-for="s in activeSessions" :key="s.id" class="mb-0.5 flex items-center gap-1">
-          <button
-            type="button"
-            class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200"
-            :class="
-              route.params.sessionId === s.id
-                ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
-                : 'text-slate-600 hover:bg-slate-50'
-            "
-            @click="openSession(s.id)"
-          >
-            <span class="truncate">{{ s.title }}</span>
-          </button>
-          <el-dropdown trigger="click" @command="onSessionCommand">
+        <div v-for="group in groupedActiveSessions" :key="group.label" class="mb-1">
+          <div class="px-3 py-1 text-[11px] font-semibold tracking-wide uppercase text-[var(--color-muted-foreground)]">
+            {{ group.label }}
+          </div>
+          <div v-for="s in group.sessions" :key="s.id" class="mb-0.5 flex items-center gap-1">
             <button
               type="button"
-              aria-label="会话操作"
-              class="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100"
+              class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200"
+              :class="
+                route.params.sessionId === s.id
+                  ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
+                  : 'text-slate-600 hover:bg-slate-50'
+              "
+              @click="openSession(s.id)"
             >
-              <el-icon :size="16"><MoreFilled /></el-icon>
+              <span class="truncate">{{ s.title }}</span>
             </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item :command="`archive:${s.id}`">归档</el-dropdown-item>
-                <el-dropdown-item :command="`delete:${s.id}`" divided class="!text-red-600">
-                  删除
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+            <el-dropdown trigger="click" @command="onSessionCommand">
+              <button
+                type="button"
+                aria-label="会话操作"
+                class="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100"
+              >
+                <el-icon :size="16"><MoreFilled /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item :command="`archive:${s.id}`">归档</el-dropdown-item>
+                  <el-dropdown-item :command="`delete:${s.id}`" divided class="!text-red-600">
+                    删除
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </div>
 
         <el-collapse v-if="archivedSessions.length > 0" class="ocbi-archive-collapse mt-2">
@@ -183,5 +225,11 @@ async function confirmDelete(id: string) {
   border: none;
   border-top: 1px solid var(--color-border);
   padding-top: 0.25rem;
+}
+
+.ocbi-session-search :deep(.el-input__wrapper) {
+  background: var(--color-muted);
+  box-shadow: none;
+  border-radius: 0.5rem;
 }
 </style>
