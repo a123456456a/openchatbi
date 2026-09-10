@@ -1,6 +1,15 @@
-import { Archive, ArchiveRestore, ChevronRight, MessageSquare, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronRight,
+  MessageSquare,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -12,9 +21,33 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useSessionsStore } from '@/stores/sessions'
+import { Input } from '@/components/ui/input'
+import { useSessionsStore, type SessionMeta } from '@/stores/sessions'
 import SettingsDialog from './SettingsDialog'
 import SidebarFooter from './SidebarFooter'
+
+/** Groups sessions into 今天/昨天/更早 buckets by `updatedAt`, newest first within each. */
+function groupByDay(list: SessionMeta[]): { label: string; sessions: SessionMeta[] }[] {
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const todayMs = startOfToday.getTime()
+  const yesterdayMs = todayMs - 24 * 60 * 60 * 1000
+
+  const today: SessionMeta[] = []
+  const yesterday: SessionMeta[] = []
+  const earlier: SessionMeta[] = []
+  for (const s of list) {
+    if (s.updatedAt >= todayMs) today.push(s)
+    else if (s.updatedAt >= yesterdayMs) yesterday.push(s)
+    else earlier.push(s)
+  }
+
+  return [
+    { label: '今天', sessions: today },
+    { label: '昨天', sessions: yesterday },
+    { label: '更早', sessions: earlier },
+  ].filter((g) => g.sessions.length > 0)
+}
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
@@ -26,9 +59,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const remove = useSessionsStore((s) => s.remove)
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
 
-  const activeSessions = sessions.filter((s) => !s.archived)
-  const archivedSessions = sessions.filter((s) => s.archived)
+  const normalizedQuery = query.trim().toLowerCase()
+  const matchesQuery = (s: SessionMeta) => !normalizedQuery || s.title.toLowerCase().includes(normalizedQuery)
+
+  const activeSessions = sessions.filter((s) => !s.archived && matchesQuery(s))
+  const archivedSessions = sessions.filter((s) => s.archived && matchesQuery(s))
+  const groupedActiveSessions = useMemo(() => groupByDay(activeSessions), [activeSessions])
 
   function newChat() {
     const id = crypto.randomUUID()
@@ -70,49 +108,70 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <Plus className="mr-1" size={16} />
             新建会话
           </Button>
+          <div className="relative mt-2">
+            <Search
+              size={14}
+              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[var(--color-muted-foreground)]"
+              aria-hidden="true"
+            />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索会话"
+              aria-label="搜索会话"
+              className="h-9 rounded-lg border-none bg-[var(--color-muted)] pl-8 text-sm shadow-none focus-visible:ring-1"
+            />
+          </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-2" aria-label="会话列表">
           {activeSessions.length === 0 ? (
             <div className="px-3 py-6 text-center text-xs text-[var(--color-muted-foreground)]">
-              暂无会话，点击上方开始
+              {query ? '没有匹配的会话' : '暂无会话，点击上方开始'}
             </div>
           ) : (
-            activeSessions.map((s) => (
-              <div key={s.id} className="mb-0.5 flex items-center gap-1">
-                <button
-                  type="button"
-                  className={
-                    'flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200 ' +
-                    (params.sessionId === s.id
-                      ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
-                      : 'text-slate-600 hover:bg-slate-50')
-                  }
-                  onClick={() => openSession(s.id)}
-                >
-                  <span className="truncate">{s.title}</span>
-                </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+            groupedActiveSessions.map((group) => (
+              <div key={group.label} className="mb-1">
+                <div className="px-3 py-1 text-[11px] font-semibold tracking-wide text-[var(--color-muted-foreground)] uppercase">
+                  {group.label}
+                </div>
+                {group.sessions.map((s) => (
+                  <div key={s.id} className="mb-0.5 flex items-center gap-1">
                     <button
                       type="button"
-                      aria-label="会话操作"
-                      className="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100 data-open:bg-slate-100"
+                      className={
+                        'flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200 ' +
+                        (params.sessionId === s.id
+                          ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
+                          : 'text-slate-600 hover:bg-slate-50')
+                      }
+                      onClick={() => openSession(s.id)}
                     >
-                      <MoreHorizontal size={16} />
+                      <span className="truncate">{s.title}</span>
                     </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => archive(s.id)}>
-                      <Archive size={14} className="mr-1.5" />
-                      归档
-                    </DropdownMenuItem>
-                    <DropdownMenuItem variant="destructive" onSelect={() => setPendingDeleteId(s.id)}>
-                      <Trash2 size={14} className="mr-1.5" />
-                      删除
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="会话操作"
+                          className="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100 data-open:bg-slate-100"
+                        >
+                          <MoreHorizontal size={16} />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => archive(s.id)}>
+                          <Archive size={14} className="mr-1.5" />
+                          归档
+                        </DropdownMenuItem>
+                        <DropdownMenuItem variant="destructive" onSelect={() => setPendingDeleteId(s.id)}>
+                          <Trash2 size={14} className="mr-1.5" />
+                          删除
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                ))}
               </div>
             ))
           )}
