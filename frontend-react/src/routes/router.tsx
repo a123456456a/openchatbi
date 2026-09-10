@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router'
 
+import DatabasesPage from '@/pages/admin/DatabasesPage'
 import UsersPage from '@/pages/admin/UsersPage'
 import ChatPage from '@/pages/ChatPage'
 import LoginPage from '@/pages/LoginPage'
@@ -19,7 +20,10 @@ export const router = createBrowserRouter([
   },
   {
     element: <RequireAuth roles={['admin']} />,
-    children: [{ path: '/admin/users', element: <UsersPage /> }],
+    children: [
+      { path: '/admin/users', element: <UsersPage /> },
+      { path: '/admin/databases', element: <DatabasesPage /> },
+    ],
   },
   { path: '/', element: <Navigate to="/chat" replace /> },
   { path: '*', element: <Navigate to="/chat" replace /> },
