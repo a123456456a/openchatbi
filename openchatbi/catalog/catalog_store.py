@@ -40,6 +40,21 @@ class CatalogStore(ABC):
         """
         pass
 
+    def set_data_warehouse_config(self, data_warehouse_config: dict) -> None:
+        """
+        Replace the data warehouse configuration at runtime and drop the cached
+        SQL engine so the next :meth:`get_sql_engine` call rebuilds a connection
+        against the new target. This only affects the data warehouse execution
+        engine; it never touches the catalog persistence storage itself.
+
+        Subclasses that cache a lazily-built engine should override this to
+        dispose of the previous engine before dropping the reference.
+
+        Args:
+            data_warehouse_config (dict): New data warehouse configuration
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def get_database_list(self) -> list[str]:
         """

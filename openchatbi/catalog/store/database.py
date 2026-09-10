@@ -235,6 +235,14 @@ class DatabaseCatalogStore(CatalogStore):
                 raise RuntimeError("SQL engine is not available. Check data warehouse configuration.") from e
         return self._sql_engine
 
+    def set_data_warehouse_config(self, data_warehouse_config: dict) -> None:
+        if not isinstance(data_warehouse_config, dict):
+            raise ValueError("data_warehouse_config must be a dictionary")
+        if self._sql_engine is not None:
+            self._sql_engine.dispose()
+            self._sql_engine = None
+        self._data_warehouse_config = data_warehouse_config
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------

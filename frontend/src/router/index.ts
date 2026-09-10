@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import ChatView from '../views/ChatView.vue'
 import LoginView from '../views/LoginView.vue'
+import DatabasesView from '../views/admin/DatabasesView.vue'
 import UsersView from '../views/admin/UsersView.vue'
 
 const router = createRouter({
@@ -28,6 +29,12 @@ const router = createRouter({
       path: '/admin/users',
       name: 'admin-users',
       component: UsersView,
+      meta: { roles: ['admin'] },
+    },
+    {
+      path: '/admin/databases',
+      name: 'admin-databases',
+      component: DatabasesView,
       meta: { roles: ['admin'] },
     },
     {

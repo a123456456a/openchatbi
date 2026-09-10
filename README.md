@@ -129,6 +129,12 @@ pnpm dev
 
 主路径聊天完全由每位用户自己的配置驱动：服务端按 `active_llm_provider` 与加密存储的 Key 动态建连，**不再**使用 `config.yaml` 里 `llm_providers` 的下拉切换。未配置 Key 时聊天会返回 400。`GET /api/me/llm-settings` 仅返回掩码后的 Key 与 `has_key`，完整 Key 不会下发给其他用户。
 
+**管理员数据库管理（主路径）：**
+
+以 `admin` 角色登录后，点击侧栏底栏头像菜单中的「数据库管理」，进入 `/admin/databases` 页面。可在此新增、编辑、删除数据源连接，支持 MySQL、PostgreSQL、Presto、Trino、SQLite 五种方言；保存前可先「测试连接」（执行一次 `SELECT 1`）。列表中同一时间只能有一个连接处于「当前使用」状态，点击「设为当前」即可切换，正在使用中的连接不允许删除。
+
+切换生效**无需重启进程**：激活新连接会实时更新运行中的 `catalog_store` 数据仓库配置，并清空已缓存的 Agent Graph（因为 SQL 方言等信息会被编译进 Graph），下一次对话会按新数据源与方言重新构建。连接密码使用与 LLM Key 相同的 Fernet 对称加密方式落库（`backend/llm/crypto.py`），列表接口只返回掩码后的值。对应 API 见 `/api/admin/database-connections`（`GET`/`POST`/`PATCH /{id}`/`DELETE /{id}`/`POST /{id}/activate`/`POST /test`/`POST /{id}/test`），仅 `admin` 角色可访问。
+
 **可选 React 对照前端（并行，非默认入口）：**
 
 仓库同时维护一套 React + shadcn/ui 前端（`frontend-react/`，端口 `5174`），与 Vue 前端（`frontend/`，端口 `5173`，默认入口）对接同一后端 API，用于视觉/交互对照与后续演进。启动方式见 `frontend-react/README.md`；功能对照清单见 `docs/superpowers/plans/checklists/2026-09-10-react-vue-parity.md`。默认入口保持 Vue，切换条件见 `docs/superpowers/specs/2026-09-10-frontend-react-dual-track-design.md`。
@@ -322,6 +328,8 @@ See [migrate.py](openchatbi/catalog/migrate.py) for more details.
     - `database_name`: Database name for catalog
     - `token_service`: Token service URL (for data warehouse that need token authentication like Presto)
     - `user_name` / `password`: Token service credentials
+
+**注意**：以上是通过 `config.yaml` 静态配置的初始/回退数据仓库。在主路径（Vue/React 前端 + FastAPI 后端）中，`admin` 角色可以通过前端「数据库管理」页面（`/admin/databases`）在运行时新增、切换、删除数据源，无需修改 `config.yaml` 或重启进程；详见上文「管理员数据库管理（主路径）」一节。进程启动时会自动加载数据库中标记为「当前使用」的连接（若存在）覆盖 `config.yaml` 中的静态配置。
 
 ### LLM Configuration
 

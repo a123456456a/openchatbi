@@ -31,6 +31,7 @@
 | 管理员用户管理（列表/创建/改角色/启停） | ✅ `views/admin/UsersView.vue` | ✅ `pages/admin/UsersPage.tsx` | 同 `/api/users` |
 | 消息 / 步骤 Markdown 渲染 | ✅ `components/common/Markdown.vue`（`markdown-it` + DOMPurify，`@tailwindcss/typography`） | ✅ `components/common/Markdown.tsx`（同上） | 2026-09-10 新增：此前消息内容与步骤详情用 `whitespace-pre-wrap` 纯文本渲染，标题/粗体/列表/表格/代码块等均显示原始符号（bug）；现统一走 sanitize 后的 markdown 渲染 |
 | 可视化图表展示（`visualization_dsl` + CSV） | ✅ `components/chat/ChartView.vue`（Chart.js） | ✅ `components/chat/ChartView.tsx`（Chart.js） | 2026-09-10 新增：此前 `ChatStep` 未携带后端 `generate_visualization` 步骤的 `data`（`visualization_dsl` + CSV），图表数据被直接丢弃、无法显示（bug）；现补上 `data` 字段并用 Chart.js 渲染 line/bar/pie/scatter/histogram，`table`/`box` 与 DSL 报错场景渲染为数据表 |
+| 管理员数据库连接管理（增删改/测试连接/切换当前数据源） | ✅ `views/admin/DatabasesView.vue` | ✅ `pages/admin/DatabasesPage.tsx` | 2026-09-10 新增：同 `/api/admin/database-connections`（GET/POST/PATCH/DELETE + `/{id}/activate` + `/test`、`/{id}/test`）；支持 mysql/postgresql/presto/trino/sqlite；激活新连接会热更新 `catalog_store` 的数据仓库配置并清空 agent graph 缓存，无需重启进程；正在使用中的连接不可删除 |
 
 ## 已知差异（视觉，非功能性）
 

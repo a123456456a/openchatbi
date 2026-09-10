@@ -109,6 +109,19 @@ class FileSystemCatalogStore(CatalogStore):
             raise RuntimeError("SQL engine is not available. Check data warehouse configuration.")
         return self._sql_engine
 
+    def set_data_warehouse_config(self, data_warehouse_config: dict) -> None:
+        if not isinstance(data_warehouse_config, dict):
+            raise ValueError("data_warehouse_config must be a dictionary")
+        if self._sql_engine is not None:
+            self._sql_engine.dispose()
+            self._sql_engine = None
+        self._data_warehouse_config = data_warehouse_config
+        try:
+            self._sql_engine = create_sqlalchemy_engine_instance(data_warehouse_config)
+        except Exception as e:
+            logger.warning(f"Failed to create SQL engine: {e}. Some catalog operations may not work.")
+            self._sql_engine = None
+
     def _validate_table_name(self, table: str) -> bool:
         """
         Validate table name

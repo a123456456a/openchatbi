@@ -46,7 +46,10 @@ export default function SidebarFooter() {
         <DropdownMenuContent align="start">
           <DropdownMenuItem disabled>资料（占位）</DropdownMenuItem>
           {role === 'admin' && (
-            <DropdownMenuItem onSelect={() => navigate('/admin/users')}>用户管理</DropdownMenuItem>
+            <>
+              <DropdownMenuItem onSelect={() => navigate('/admin/users')}>用户管理</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate('/admin/databases')}>数据库管理</DropdownMenuItem>
+            </>
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => void onLogout()}>退出登录</DropdownMenuItem>

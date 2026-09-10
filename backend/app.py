@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 import backend.auth.models  # noqa: F401
 import backend.db as db
+import backend.warehouse.models  # noqa: F401
 from backend.auth.routes import auth_router, oauth_router
 from backend.chat.routes import chat_router
 from backend.config import get_settings
@@ -14,12 +15,19 @@ from backend.db import Base
 from backend.llm.routes import llm_settings_router
 from backend.users.routes import download_router, users_router
 from backend.validation import redact_sensitive_fields
+from backend.warehouse import service as warehouse_service
+from backend.warehouse.routes import warehouse_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=db.engine)
     db.ensure_sqlite_schema(db.engine)
+    session = db.SessionLocal()
+    try:
+        warehouse_service.apply_active_connection_on_startup(session)
+    finally:
+        session.close()
     yield
 
 
@@ -48,6 +56,7 @@ app.include_router(chat_router)
 app.include_router(users_router)
 app.include_router(download_router)
 app.include_router(llm_settings_router)
+app.include_router(warehouse_router)
 
 
 @app.get("/health")
