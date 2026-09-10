@@ -2,6 +2,7 @@ import { ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import Markdown from '../common/Markdown'
 
 export default function ThinkingCollapse({
   thinking,
@@ -34,9 +35,9 @@ export default function ThinkingCollapse({
         思考过程
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <pre className="m-0 mt-1 whitespace-pre-wrap break-words rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-          {thinking}
-        </pre>
+        <div className="mt-1 rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+          <Markdown text={thinking} className="text-xs leading-relaxed" />
+        </div>
       </CollapsibleContent>
     </Collapsible>
   )

@@ -15,6 +15,19 @@ describe('applyStreamEvent', () => {
     expect(assistant.steps[0]).toMatchObject({ kind: 'sql', level: 1, label: '查询', text: 'SELECT 1' })
   })
 
+  it('captures the step data payload (e.g. visualization_dsl)', () => {
+    const assistant = makeAssistant()
+    applyStreamEvent(assistant, {
+      type: 'step',
+      kind: 'visualization',
+      level: 1,
+      label: '图表',
+      text: '📊 Generated visualization',
+      data: { visualization_dsl: { chart_type: 'bar' }, data: 'a,b\n1,2' },
+    })
+    expect(assistant.steps[0].data).toEqual({ visualization_dsl: { chart_type: 'bar' }, data: 'a,b\n1,2' })
+  })
+
   it('routes token with is_final=false to thinking', () => {
     const assistant = makeAssistant()
     applyStreamEvent(assistant, { type: 'token', level: 0, label: '', is_final: false, text: 'reasoning…' })

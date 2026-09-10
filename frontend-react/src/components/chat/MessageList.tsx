@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@/types/stream'
+import Markdown from '../common/Markdown'
 import StepCollapse from './StepCollapse'
 import ThinkingCollapse from './ThinkingCollapse'
 
@@ -17,7 +18,7 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
         <div key={m.id} className={'max-w-3xl ' + (m.role === 'user' ? 'ml-auto' : 'mr-auto')}>
           <div
             className={
-              'rounded-lg px-4 py-3 text-sm whitespace-pre-wrap ' +
+              'rounded-lg px-4 py-3 text-sm ' +
               (m.role === 'user'
                 ? 'bg-[var(--color-primary)] text-white'
                 : 'border border-[var(--color-border)] bg-white text-slate-800')
@@ -27,9 +28,11 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
               {m.role === 'user' ? '你' : '助手'}
               {m.streaming ? ' …' : ''}
             </div>
-            <div className="whitespace-pre-wrap break-words">
-              {m.content || (m.streaming ? '思考中…' : '')}
-            </div>
+            {m.content ? (
+              <Markdown text={m.content} className={m.role === 'user' ? 'prose-chat-invert' : undefined} />
+            ) : (
+              m.streaming && <div className="text-sm">思考中…</div>
+            )}
             {m.role === 'assistant' && <ThinkingCollapse thinking={m.thinking} streaming={m.streaming} />}
             {m.role === 'assistant' && <StepCollapse steps={m.steps} />}
           </div>

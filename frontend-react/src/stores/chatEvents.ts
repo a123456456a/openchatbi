@@ -18,6 +18,8 @@ export function applyStreamEvent(assistant: ChatMessage, event: StreamEvent): vo
       level: Number(event.level ?? 0),
       label: String(event.label ?? ''),
       text: String(event.text ?? ''),
+      data:
+        event.data && typeof event.data === 'object' ? (event.data as Record<string, unknown>) : undefined,
     }
     assistant.steps.push(step)
   } else if (event.type === 'token') {
