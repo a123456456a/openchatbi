@@ -40,7 +40,9 @@ def _get_rubric_prompt_template() -> str:
     """Get the rubric prompt template from prompts/sql_confidence_prompt.md with caching."""
     global _rubric_prompt_template_cache
     if _rubric_prompt_template_cache is None:
-        with importlib.resources.files("openchatbi.prompts").joinpath("sql_confidence_prompt.md").open("r") as f:
+        with importlib.resources.files("openchatbi.prompts").joinpath("sql_confidence_prompt.md").open(
+            "r", encoding="utf-8"
+        ) as f:
             _rubric_prompt_template_cache = f.read()
     return _rubric_prompt_template_cache
 

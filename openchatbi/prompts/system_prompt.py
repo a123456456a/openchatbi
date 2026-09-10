@@ -56,7 +56,7 @@ def get_dialect_rules():
         for item in dialect_dir.iterdir():
             if item.is_file() and item.name.endswith(".md"):
                 dialect_name = item.name[:-3]
-                with item.open() as f:
+                with item.open(encoding="utf-8") as f:
                     prompt = f.read()
                     _dialect_rules_cache[dialect_name] = prompt
     return _dialect_rules_cache
@@ -66,7 +66,9 @@ def get_agent_prompt_template() -> str:
     """Get agent prompt template with caching."""
     global _agent_prompt_template_cache
     if _agent_prompt_template_cache is None:
-        with importlib.resources.files("openchatbi.prompts").joinpath("agent_prompt.md").open("r") as f:
+        with importlib.resources.files("openchatbi.prompts").joinpath("agent_prompt.md").open(
+            "r", encoding="utf-8"
+        ) as f:
             prompt = f.read()
 
         _agent_prompt_template_cache = (
@@ -81,7 +83,9 @@ def get_extraction_prompt_template() -> str:
     """Get extraction prompt template with caching."""
     global _extraction_prompt_template_cache
     if _extraction_prompt_template_cache is None:
-        with importlib.resources.files("openchatbi.prompts").joinpath("extraction_prompt.md").open("r") as f:
+        with importlib.resources.files("openchatbi.prompts").joinpath("extraction_prompt.md").open(
+            "r", encoding="utf-8"
+        ) as f:
             prompt = f.read()
 
         _extraction_prompt_template_cache = prompt.replace("[organization]", get_organization()).replace(
@@ -94,7 +98,9 @@ def get_table_selection_prompt_template() -> str:
     """Get table selection prompt template with caching."""
     global _table_selection_prompt_template_cache
     if _table_selection_prompt_template_cache is None:
-        with importlib.resources.files("openchatbi.prompts").joinpath("schema_linking_prompt.md").open("r") as f:
+        with importlib.resources.files("openchatbi.prompts").joinpath("schema_linking_prompt.md").open(
+            "r", encoding="utf-8"
+        ) as f:
             prompt = f.read()
         _table_selection_prompt_template_cache = prompt.replace("[organization]", get_organization()).replace(
             "[basic_knowledge_glossary]", get_basic_knowledge()
@@ -106,7 +112,9 @@ def get_text2sql_prompt_template() -> str:
     """Get text2sql prompt template with caching."""
     global _text2sql_prompt_template_cache
     if _text2sql_prompt_template_cache is None:
-        with importlib.resources.files("openchatbi.prompts").joinpath("text2sql_prompt.md").open("r") as f:
+        with importlib.resources.files("openchatbi.prompts").joinpath("text2sql_prompt.md").open(
+            "r", encoding="utf-8"
+        ) as f:
             prompt = f.read()
         _text2sql_prompt_template_cache = (
             prompt.replace("[organization]", get_organization())
@@ -120,7 +128,9 @@ def get_visualization_prompt_template() -> str:
     """Get visualization prompt template with caching."""
     global _visualization_prompt_template_cache
     if _visualization_prompt_template_cache is None:
-        with importlib.resources.files("openchatbi.prompts").joinpath("visualization_prompt.md").open("r") as f:
+        with importlib.resources.files("openchatbi.prompts").joinpath("visualization_prompt.md").open(
+            "r", encoding="utf-8"
+        ) as f:
             _visualization_prompt_template_cache = f.read()
     return _visualization_prompt_template_cache
 
@@ -129,7 +139,9 @@ def get_summary_prompt_template() -> str:
     """Get summary prompt template with caching."""
     global _summary_prompt_template_cache
     if _summary_prompt_template_cache is None:
-        with importlib.resources.files("openchatbi.prompts").joinpath("summary_prompt.md").open("r") as f:
+        with importlib.resources.files("openchatbi.prompts").joinpath("summary_prompt.md").open(
+            "r", encoding="utf-8"
+        ) as f:
             _summary_prompt_template_cache = f.read()
     return _summary_prompt_template_cache
 
