@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useSessionsStore } from '@/stores/sessions'
+import SettingsDialog from './SettingsDialog'
 import SidebarFooter from './SidebarFooter'
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -74,6 +75,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</section>
+
+      <SettingsDialog />
     </div>
   )
 }

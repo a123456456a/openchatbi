@@ -11,12 +11,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 
 export default function SidebarFooter() {
   const navigate = useNavigate()
   const username = useAuthStore((s) => s.username)
   const role = useAuthStore((s) => s.role)
   const logout = useAuthStore((s) => s.logout)
+  const openSettings = useSettingsStore((s) => s.openSettings)
 
   async function onLogout() {
     await logout()
@@ -56,10 +58,7 @@ export default function SidebarFooter() {
         size="icon"
         className="h-10 w-10 rounded-full"
         aria-label="设置"
-        onClick={() => {
-          // Task 9 wires this up to the Settings dialog.
-          console.info('open settings (TODO: Task 9)')
-        }}
+        onClick={openSettings}
       >
         <Settings size={18} />
       </Button>

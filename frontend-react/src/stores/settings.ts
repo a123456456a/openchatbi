@@ -1,12 +1,31 @@
 import { create } from 'zustand'
 
-/**
- * Minimal slice for Task 7 (chat needs `chatProvider()` + dialog open state).
- * Task 9 fills in `load` / `save` / `removeProvider` against `/api/me/llm-settings`.
- */
+import {
+  deleteLlmProvider,
+  fetchLlmSettings,
+  saveLlmSettings,
+  type LlmCatalogItem,
+  type LlmConfigRow,
+} from '@/api/llmSettings'
+import { LLM_PROVIDER_CATALOG } from '@/constants/llmProviders'
+
+export type SettingsForm = {
+  provider: string
+  api_key: string
+  model: string
+  base_url: string
+}
+
 type SettingsState = {
   activeProvider: string | null
+  configs: LlmConfigRow[]
+  catalog: LlmCatalogItem[]
   settingsOpen: boolean
+  loading: boolean
+  error: string | null
+  load: () => Promise<void>
+  save: (form: SettingsForm) => Promise<void>
+  removeProvider: (provider: string) => Promise<void>
   openSettings: () => void
   closeSettings: () => void
   chatProvider: () => string | null
@@ -14,7 +33,45 @@ type SettingsState = {
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   activeProvider: null,
+  configs: [],
+  catalog: [...LLM_PROVIDER_CATALOG],
   settingsOpen: false,
+  loading: false,
+  error: null,
+
+  async load() {
+    set({ loading: true, error: null })
+    try {
+      const data = await fetchLlmSettings()
+      set({ activeProvider: data.active_provider, configs: data.configs, catalog: data.catalog })
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) })
+      throw e
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  async save(form) {
+    const data = await saveLlmSettings({
+      active_provider: form.provider || null,
+      configs: [
+        {
+          provider: form.provider,
+          ...(form.api_key ? { api_key: form.api_key } : {}),
+          model: form.model,
+          base_url: form.base_url || null,
+        },
+      ],
+    })
+    set({ activeProvider: data.active_provider, configs: data.configs, catalog: data.catalog })
+  },
+
+  async removeProvider(provider) {
+    await deleteLlmProvider(provider)
+    await get().load()
+  },
+
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   /** Value to send on chat requests (`null` means backend default / active_provider). */
