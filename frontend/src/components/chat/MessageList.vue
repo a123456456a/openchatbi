@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import StepCollapse from './StepCollapse.vue'
 import ThinkingCollapse from './ThinkingCollapse.vue'
+import Markdown from '../common/Markdown.vue'
 import type { ChatMessage } from '../../types/stream'
 
 defineProps<{
@@ -17,13 +18,12 @@ defineProps<{
       :class="m.role === 'user' ? 'ml-auto' : 'mr-auto'"
     >
       <div
-        class="rounded-lg px-4 py-3 text-sm whitespace-pre-wrap"
+        class="rounded-lg px-4 py-3 text-sm"
         :class="m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-800'"
       >
         <div class="text-xs opacity-70 mb-1">{{ m.role === 'user' ? '你' : '助手' }}{{ m.streaming ? ' …' : '' }}</div>
-        <div class="whitespace-pre-wrap break-words">
-          {{ m.content || (m.streaming ? '思考中…' : '') }}
-        </div>
+        <Markdown v-if="m.content" :text="m.content" :class="m.role === 'user' ? 'prose-chat-invert' : ''" />
+        <div v-else-if="m.streaming" class="text-sm">思考中…</div>
         <ThinkingCollapse
           v-if="m.role === 'assistant'"
           :thinking="m.thinking"

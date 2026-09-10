@@ -12,6 +12,7 @@ export interface ChatStep {
   level: number
   label: string
   text: string
+  data?: Record<string, unknown>
 }
 
 export interface ChatMessage {
