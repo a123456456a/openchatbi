@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { UserFilled, Setting } from '@element-plus/icons-vue'
+import { Setting, UserFilled } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 
 import { useAuthStore } from '../../stores/auth'
@@ -26,18 +26,19 @@ function onMenuCommand(cmd: string) {
 
 <template>
   <div
-    class="h-14 px-3 border-t border-slate-200 bg-white flex items-center justify-between gap-2 shrink-0"
+    class="flex h-14 shrink-0 items-center justify-between gap-2 border-t border-[var(--color-border)] bg-[var(--color-card)] px-3"
   >
-    <!-- 侧栏底栏左侧：头像 + 登录人 -->
     <el-dropdown trigger="click" @command="onMenuCommand">
       <button
         type="button"
-        class="flex items-center gap-2 min-w-0 rounded-md px-1.5 py-1 hover:bg-slate-100 text-left"
+        class="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-200 hover:bg-slate-50"
       >
-        <el-avatar :size="28" class="shrink-0 bg-slate-600">
+        <el-avatar :size="30" class="shrink-0 !bg-[var(--color-primary)]">
           <el-icon><UserFilled /></el-icon>
         </el-avatar>
-        <span class="truncate text-sm text-slate-800 max-w-[7rem]">{{ auth.username || '用户' }}</span>
+        <span class="max-w-[7rem] truncate text-sm font-medium text-[var(--color-foreground)]">
+          {{ auth.username || '用户' }}
+        </span>
       </button>
       <template #dropdown>
         <el-dropdown-menu>
@@ -48,10 +49,10 @@ function onMenuCommand(cmd: string) {
       </template>
     </el-dropdown>
 
-    <!-- 侧栏底栏右侧：设置齿轮 -->
     <el-button
       text
       circle
+      class="!h-10 !w-10"
       aria-label="设置"
       @click="settings.openSettings()"
     >

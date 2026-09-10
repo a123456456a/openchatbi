@@ -224,3 +224,5 @@ chroma_db_new
 # SDD scratch
 .superpowers/
 
+
+.worktrees/

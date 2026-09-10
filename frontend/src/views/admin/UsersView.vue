@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Plus, User } from '@element-plus/icons-vue'
 
 import AppShell from '../../components/layout/AppShell.vue'
 import { createUser, listUsers, patchUser, type UserOut } from '../../api/users'
@@ -66,44 +67,68 @@ async function changeRole(row: UserOut, role: string) {
 
 <template>
   <AppShell>
-    <div class="flex-1 overflow-auto p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h1 class="text-lg font-semibold text-slate-800">用户管理</h1>
-        <el-button type="primary" @click="dialogOpen = true">创建用户</el-button>
+    <div class="flex-1 overflow-auto bg-[var(--color-background)] p-6">
+      <div class="mx-auto max-w-5xl">
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-start gap-3">
+            <div
+              class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-muted)] text-[var(--color-primary)]"
+              aria-hidden="true"
+            >
+              <el-icon :size="20"><User /></el-icon>
+            </div>
+            <div>
+              <h1 class="text-xl font-semibold tracking-tight text-[var(--color-foreground)]">
+                用户管理
+              </h1>
+              <p class="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
+                管理账号角色与启用状态
+              </p>
+            </div>
+          </div>
+          <el-button type="primary" class="!h-10 !rounded-xl" @click="dialogOpen = true">
+            <el-icon class="mr-1"><Plus /></el-icon>
+            创建用户
+          </el-button>
+        </div>
+
+        <div
+          class="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-card)]"
+        >
+          <el-table v-loading="loading" :data="users" stripe class="users-table">
+            <el-table-column prop="username" label="用户名" min-width="120" />
+            <el-table-column prop="role" label="角色" width="140">
+              <template #default="{ row }">
+                <el-select
+                  :model-value="row.role"
+                  size="small"
+                  @change="(v: string) => changeRole(row, v)"
+                >
+                  <el-option label="admin" value="admin" />
+                  <el-option label="analyst" value="analyst" />
+                  <el-option label="viewer" value="viewer" />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column prop="is_active" label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.is_active ? 'success' : 'info'" effect="light" round>
+                  {{ row.is_active ? '启用' : '停用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120">
+              <template #default="{ row }">
+                <el-button size="small" link type="primary" @click="toggleActive(row)">
+                  {{ row.is_active ? '停用' : '启用' }}
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </div>
 
-      <el-table v-loading="loading" :data="users" stripe border>
-        <el-table-column prop="username" label="用户名" min-width="120" />
-        <el-table-column prop="role" label="角色" width="140">
-          <template #default="{ row }">
-            <el-select
-              :model-value="row.role"
-              size="small"
-              @change="(v: string) => changeRole(row, v)"
-            >
-              <el-option label="admin" value="admin" />
-              <el-option label="analyst" value="analyst" />
-              <el-option label="viewer" value="viewer" />
-            </el-select>
-          </template>
-        </el-table-column>
-        <el-table-column prop="is_active" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'">
-              {{ row.is_active ? '启用' : '停用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="120">
-          <template #default="{ row }">
-            <el-button size="small" link type="primary" @click="toggleActive(row)">
-              {{ row.is_active ? '停用' : '启用' }}
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-dialog v-model="dialogOpen" title="创建用户" width="420px">
+      <el-dialog v-model="dialogOpen" title="创建用户" width="420px" class="rounded-2xl">
         <el-form label-position="top">
           <el-form-item label="用户名">
             <el-input v-model="form.username" />
@@ -120,10 +145,21 @@ async function changeRole(row: UserOut, role: string) {
           </el-form-item>
         </el-form>
         <template #footer>
-          <el-button @click="dialogOpen = false">取消</el-button>
-          <el-button type="primary" @click="onCreate">创建</el-button>
+          <el-button class="!rounded-xl" @click="dialogOpen = false">取消</el-button>
+          <el-button type="primary" class="!rounded-xl" @click="onCreate">创建</el-button>
         </template>
       </el-dialog>
     </div>
   </AppShell>
 </template>
+
+<style scoped>
+.users-table {
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: #eff6ff;
+}
+
+.users-table :deep(.el-table__inner-wrapper::before) {
+  display: none;
+}
+</style>

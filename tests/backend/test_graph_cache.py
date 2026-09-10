@@ -5,6 +5,7 @@ import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.llm.graph_cache import (
+    _checkpointer,
     _graphs,
     _graphs_lock,
     get_or_build_graph,
@@ -44,10 +45,18 @@ def test_get_or_build_survives_concurrent_invalidate():
         with _graphs_lock:
             _graphs[key] = sentinel
         ready.set()
-        with patch(
-            "backend.llm.graph_cache.build_agent_graph_async",
-            new=AsyncMock(return_value=sentinel),
+        with (
+            patch(
+                "backend.llm.graph_cache.build_agent_graph_async",
+                new=AsyncMock(return_value=sentinel),
+            ),
+            patch(
+                "backend.llm.graph_cache.get_async_memory_store",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("backend.llm.graph_cache.config") as cfg,
         ):
+            cfg.get.return_value.catalog_store = "catalog"
             for _ in range(200):
                 got = await get_or_build_graph(user_id, provider, MagicMock(), config_hash)
                 assert got is sentinel
@@ -64,3 +73,26 @@ def test_get_or_build_survives_concurrent_invalidate():
         _graphs.clear()
 
     assert not errors
+
+
+def test_get_or_build_passes_checkpointer():
+    _graphs.clear()
+    try:
+        build = AsyncMock(return_value=object())
+        memory = object()
+        with (
+            patch("backend.llm.graph_cache.build_agent_graph_async", new=build),
+            patch("backend.llm.graph_cache.get_async_memory_store", new=AsyncMock(return_value=memory)),
+            patch("backend.llm.graph_cache.set_llm_override", return_value="tok"),
+            patch("backend.llm.graph_cache.reset_llm_override"),
+            patch("backend.llm.graph_cache.config") as cfg,
+        ):
+            cfg.get.return_value.catalog_store = "catalog"
+            asyncio.run(get_or_build_graph("u1", "deepseek", MagicMock(), "hashhashhashhash"))
+
+        kwargs = build.await_args.kwargs
+        assert kwargs["checkpointer"] is _checkpointer
+        assert kwargs["memory_store"] is memory
+        assert kwargs["llm_provider"] is None
+    finally:
+        _graphs.clear()

@@ -205,10 +205,13 @@ def test_graph_builds_under_llm_override(client):
     with (
         patch("backend.chat.routes.build_chat_model", return_value=fake_llm),
         patch("backend.llm.graph_cache.build_agent_graph_async", new=fake_build),
+        patch("backend.llm.graph_cache.get_async_memory_store", new=AsyncMock(return_value=None)),
+        patch("backend.llm.graph_cache.config") as cfg,
         patch("backend.chat.routes.AgentStreamProcessor") as proc_cls,
         patch("backend.chat.routes.extract_final_answer", return_value="hello"),
         patch("backend.chat.routes.build_run_config", return_value={"configurable": {}}),
     ):
+        cfg.get.return_value.catalog_store = "catalog"
         proc = MagicMock()
         proc.process.return_value = []
         proc.emit_turn_usage.return_value = None

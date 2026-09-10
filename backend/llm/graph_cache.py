@@ -6,13 +6,18 @@ import asyncio
 import threading
 from typing import Any
 
+from langgraph.checkpoint.memory import MemorySaver
+
 from openchatbi import config
 from openchatbi.agent_graph import build_agent_graph_async
 from openchatbi.llm.llm import reset_llm_override, set_llm_override
+from openchatbi.tool.memory import get_async_memory_store
 
 _graphs: dict[str, Any] = {}
 _graphs_lock = threading.Lock()
 _graphs_build_lock = asyncio.Lock()
+# Shared across compiled graphs; sessions are isolated by thread_id in run config.
+_checkpointer = MemorySaver()
 
 
 def graph_cache_key(user_id: str, provider: str, config_hash: str) -> str:
@@ -43,7 +48,10 @@ async def get_or_build_graph(user_id: str, provider: str, llm, config_hash: str)
         token = set_llm_override(llm)
         try:
             graph = await build_agent_graph_async(
-                config.get().catalog_store, llm_provider=None
+                config.get().catalog_store,
+                checkpointer=_checkpointer,
+                memory_store=await get_async_memory_store(),
+                llm_provider=None,
             )
         finally:
             reset_llm_override(token)
