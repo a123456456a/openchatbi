@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useSettingsStore, type SettingsForm } from '@/stores/settings'
+import type { LlmCatalogItem, LlmConfigRow } from '@/api/llmSettings'
 
 const emptyForm: SettingsForm = { provider: '', api_key: '', model: '', base_url: '' }
 
@@ -31,9 +32,13 @@ export default function SettingsDialog() {
     return configs.find((row) => row.provider === provider)
   }
 
-  function applyProvider(provider: string) {
-    const meta = findCatalog(provider)
-    const existing = findConfig(provider)
+  function applyProvider(
+    provider: string,
+    catalogList: LlmCatalogItem[] = catalog,
+    configList: LlmConfigRow[] = configs,
+  ) {
+    const meta = catalogList.find((item) => item.id === provider)
+    const existing = configList.find((row) => row.provider === provider)
     setForm({
       provider,
       api_key: '',
@@ -50,9 +55,14 @@ export default function SettingsDialog() {
     load()
       .then(() => {
         if (!active) return
+        // Read the freshly loaded state directly instead of relying on the
+        // `catalog`/`configs` closed over by this effect, which still hold
+        // the values from before `load()` resolved (often empty on first
+        // open) and would otherwise make the form fall back to provider
+        // defaults even when a config was already saved.
         const state = useSettingsStore.getState()
         const firstId = state.catalog[0]?.id ?? ''
-        applyProvider(state.activeProvider || firstId)
+        applyProvider(state.activeProvider || firstId, state.catalog, state.configs)
       })
       .catch((e: unknown) => {
         if (active) setError(e instanceof Error ? e.message : '加载设置失败')
