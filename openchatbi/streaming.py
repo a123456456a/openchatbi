@@ -68,8 +68,11 @@ class StreamStep:
     text: str  # human-readable, possibly markdown (e.g. fenced SQL)
     level: int  # 0 = main agent, >0 = nested / sub-agent
     label: str  # "main", "data_analysis", or a namespace label
-    kind: str  # "tool" | "sub_agent" | "rewrite" | "tables" | "sql" |
-    # "execute_sql" | "visualization" | "confidence" | "tool_error" | "generic"
+    kind: str  # "tool" | "tool_call" | "tool_result" | "sub_agent" | "rewrite" | "tables" |
+    # "sql" | "execute_sql" | "visualization" | "confidence" | "tool_error"
+    # "tool"/"tool_call"/"sub_agent" describe an *invocation* (no result yet); UI
+    # consumers generally only need to surface the *result* kinds ("tool_result",
+    # "tool_error", "sql", "execute_sql", "visualization", "tables", "confidence").
     data: dict[str, Any] = field(default_factory=dict)  # structured payload
 
 
@@ -148,15 +151,19 @@ def _message_list(value: object) -> list[object]:
     return [value]
 
 
-def _describe_generic_node(node_output: dict) -> list[str]:
+def _describe_generic_node(node_output: dict) -> list[tuple[str, str]]:
     """Describe tool calls / tool results from an arbitrary sub-agent node.
 
     Used as a fallback for nodes without a dedicated handler (notably the
     deepagents data-analysis sub-agent's ``model``/``tools`` nodes). Plain
     assistant text is skipped here because it is already shown via the token
     stream.
+
+    Returns ``(kind, text)`` pairs so callers can tell a tool *call*
+    (``"tool_call"``) apart from its *result* (``"tool_result"``): UI
+    consumers only need the latter (see ``StreamStep.kind``).
     """
-    descriptions: list[str] = []
+    descriptions: list[tuple[str, str]] = []
     for message in _message_list(node_output.get("messages")):
         tool_calls = getattr(message, "tool_calls", None)
         if isinstance(message, AIMessage) and tool_calls:
@@ -168,10 +175,12 @@ def _describe_generic_node(node_output: dict) -> list[str]:
                         rationale = preview_text(args[key], 200)
                         break
                 suffix = f"：{rationale}" if rationale else ""
-                descriptions.append(f"🛠️ Using tool: `{tool_call.get('name', '?')}`{suffix}")
+                descriptions.append(("tool_call", f"🛠️ Using tool: `{tool_call.get('name', '?')}`{suffix}"))
         elif isinstance(message, ToolMessage):
             tool_name = getattr(message, "name", None) or "tool"
-            descriptions.append(f"📤 Tool `{tool_name}` result：{preview_text(message.content, 300)}")
+            descriptions.append(
+                ("tool_result", f"📤 Tool `{tool_name}` result：{preview_text(message.content, 300)}")
+            )
     return descriptions
 
 
@@ -371,19 +380,33 @@ class AgentStreamProcessor:
                 for message in _message_list(node_output.get("messages")):
                     if not isinstance(message, ToolMessage):
                         continue
-                    if getattr(message, "status", None) != "error":
-                        continue
                     tool_name = getattr(message, "name", None) or "tool"
-                    error_preview = _extract_tool_error_message(message.content)
-                    extra_steps.append(
-                        StreamStep(
-                            text=f"❌ Tool `{tool_name}` failed: {error_preview}",
-                            level=level,
-                            label=label,
-                            kind="tool_error",
-                            data={"tool": tool_name, "error": str(message.content)},
+                    if getattr(message, "status", None) == "error":
+                        error_preview = _extract_tool_error_message(message.content)
+                        extra_steps.append(
+                            StreamStep(
+                                text=f"❌ Tool `{tool_name}` failed: {error_preview}",
+                                level=level,
+                                label=label,
+                                kind="tool_error",
+                                data={"tool": tool_name, "error": str(message.content)},
+                            )
                         )
-                    )
+                    else:
+                        # Bug fix: previously only tool *errors* were surfaced here, so a
+                        # successfully returned tool result was silently dropped and never
+                        # reached the UI (only the preceding "Using tool: ..." call
+                        # announcement was visible). Emit the actual result too.
+                        result_preview = preview_text(message.content, 500)
+                        extra_steps.append(
+                            StreamStep(
+                                text=f"📤 Tool `{tool_name}` result：{result_preview}",
+                                level=level,
+                                label=label,
+                                kind="tool_result",
+                                data={"tool": tool_name, "result": str(message.content)},
+                            )
+                        )
             else:
                 matched = False
 
@@ -394,8 +417,8 @@ class AgentStreamProcessor:
 
             # Generic fallback for sub-agent nodes (deepagents `model`/`tools`).
             if not matched and not is_main_node:
-                for generic_desc in _describe_generic_node(node_output):
-                    yield StreamStep(text=generic_desc, level=level, label=label, kind="generic")
+                for generic_kind, generic_desc in _describe_generic_node(node_output):
+                    yield StreamStep(text=generic_desc, level=level, label=label, kind=generic_kind)
 
 
 def extract_final_answer(final_response: str) -> str:
