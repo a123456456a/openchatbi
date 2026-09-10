@@ -63,3 +63,9 @@ def invalidate_graphs_for_user(user_id: str) -> None:
     with _graphs_lock:
         for key in [cached_key for cached_key in _graphs if cached_key.startswith(prefix)]:
             del _graphs[key]
+
+
+def invalidate_all_graphs() -> None:
+    """Drop every cached graph, e.g. after the active data warehouse changes."""
+    with _graphs_lock:
+        _graphs.clear()
