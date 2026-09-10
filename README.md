@@ -129,6 +129,10 @@ pnpm dev
 
 主路径聊天完全由每位用户自己的配置驱动：服务端按 `active_llm_provider` 与加密存储的 Key 动态建连，**不再**使用 `config.yaml` 里 `llm_providers` 的下拉切换。未配置 Key 时聊天会返回 400。`GET /api/me/llm-settings` 仅返回掩码后的 Key 与 `has_key`，完整 Key 不会下发给其他用户。
 
+**可选 React 对照前端（并行，非默认入口）：**
+
+仓库同时维护一套 React + shadcn/ui 前端（`frontend-react/`，端口 `5174`），与 Vue 前端（`frontend/`，端口 `5173`，默认入口）对接同一后端 API，用于视觉/交互对照与后续演进。启动方式见 `frontend-react/README.md`；功能对照清单见 `docs/superpowers/plans/checklists/2026-09-10-react-vue-parity.md`。默认入口保持 Vue，切换条件见 `docs/superpowers/specs/2026-09-10-frontend-react-dual-track-design.md`。
+
 **样例 UI（demo only，非产品主路径）：**
 
 Run demo using **example dataset** from spider dataset. You need to provide "YOUR OPENAI API KEY" or change config to use other LLM providers.
