@@ -17,7 +17,8 @@
 | 未登录重定向 + `redirect` query | ✅ | ✅ | |
 | 新建会话 | ✅ `AppShell.vue` | ✅ `components/layout/AppShell.tsx` | `crypto.randomUUID()` |
 | 会话列表持久化（localStorage） | ✅ `ocbi_sessions` | ✅ `ocbi_sessions`（同 key） | |
-| 会话切换清空消息 | ✅ `ChatView.vue` | ✅ `pages/ChatPage.tsx` | |
+| 会话切换恢复历史消息（按会话持久化） | ✅ `stores/chat.ts`（`loadSession`）+ `stores/sessions.ts`（`ocbi_session_messages`） | ✅ `stores/chat.ts`（`loadSession`）+ `stores/sessions.ts`（`ocbi_session_messages`） | 2026-09-10 修复：此前切换会话会清空消息且无法恢复（bug），现改为按会话 id 持久化消息并在切回时恢复；切换时若原会话仍在流式生成会自动 `stop()` 中止 |
+| 会话归档 / 恢复 / 删除 | ✅ `AppShell.vue`（`el-dropdown` + `el-collapse`「已归档」区） | ✅ `AppShell.tsx`（`DropdownMenu` + `Collapsible`「已归档」区） | 新增能力：会话条目右侧常驻「更多操作」按钮，可归档/删除；已归档区可恢复/永久删除（删除前二次确认）；删除当前会话会自动创建新会话 |
 | 流式聊天（NDJSON） | ✅ `api/chat.ts` | ✅ `api/chat.ts` + `lib/ndjson.ts`（含单测） | `/api/chat/stream`，`mode: 'events'` |
 | thinking / content 分流（`is_final`） | ✅ `stores/chat.ts` | ✅ `stores/chatEvents.ts`（含单测） | `is_final === false` → thinking |
 | `final_answer` 覆盖 content | ✅ | ✅ | |
