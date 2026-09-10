@@ -162,6 +162,25 @@ class TestFileSystemCatalogStore:
             columns = mock_catalog_store.get_column_list(table_name)
             assert isinstance(columns, list)
 
+    def test_set_data_warehouse_config_rebuilds_engine(self, temp_dir):
+        """Test hot-swapping the data warehouse config rebuilds the SQL engine."""
+        data_warehouse_config = {"uri": "sqlite:///:memory:", "include_tables": None, "database_name": "test_db"}
+        store = FileSystemCatalogStore(data_path=str(temp_dir), data_warehouse_config=data_warehouse_config)
+        original_engine = store.get_sql_engine()
+
+        new_config = {"uri": "sqlite:///:memory:", "include_tables": None, "database_name": "other_db"}
+        store.set_data_warehouse_config(new_config)
+
+        assert store.get_data_warehouse_config() == new_config
+        new_engine = store.get_sql_engine()
+        assert new_engine is not original_engine
+
+    def test_set_data_warehouse_config_rejects_non_dict(self, temp_dir):
+        data_warehouse_config = {"uri": "sqlite:///:memory:", "include_tables": None, "database_name": "test_db"}
+        store = FileSystemCatalogStore(data_path=str(temp_dir), data_warehouse_config=data_warehouse_config)
+        with pytest.raises(ValueError):
+            store.set_data_warehouse_config("not-a-dict")
+
     def test_data_path_validation(self):
         """Test data path validation."""
         data_warehouse_config = {"uri": "sqlite:///:memory:", "include_tables": None, "database_name": "test_db"}

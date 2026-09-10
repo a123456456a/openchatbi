@@ -84,6 +84,24 @@ class TestInitialization:
         # The data warehouse engine is created lazily and separately.
         assert store.get_sql_engine() is not store._engine
 
+    def test_set_data_warehouse_config_swaps_engine_without_touching_catalog_db(self):
+        engine = create_engine("sqlite:///:memory:")
+        store = DatabaseCatalogStore(engine=engine, data_warehouse_config={"uri": "sqlite:///:memory:"})
+        original_dw_engine = store.get_sql_engine()
+
+        new_config = {"uri": "sqlite:///:memory:", "database_name": "new_dw"}
+        store.set_data_warehouse_config(new_config)
+
+        assert store.get_data_warehouse_config() == new_config
+        assert store.get_sql_engine() is not original_dw_engine
+        # Catalog persistence engine is untouched.
+        assert store._engine is engine
+
+    def test_set_data_warehouse_config_rejects_non_dict(self):
+        store = DatabaseCatalogStore(connection_string="sqlite:///:memory:")
+        with pytest.raises(ValueError):
+            store.set_data_warehouse_config("nope")
+
 
 # --------------------------------------------------------------------------
 # 5.3 / 5.4 List reads
