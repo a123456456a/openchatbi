@@ -18,9 +18,14 @@ function goAdminUsers() {
   void router.push({ name: 'admin-users' })
 }
 
+function goAdminDatabases() {
+  void router.push({ name: 'admin-databases' })
+}
+
 function onMenuCommand(cmd: string) {
   if (cmd === 'logout') void onLogout()
   else if (cmd === 'admin') goAdminUsers()
+  else if (cmd === 'admin-databases') goAdminDatabases()
 }
 </script>
 
@@ -44,6 +49,7 @@ function onMenuCommand(cmd: string) {
         <el-dropdown-menu>
           <el-dropdown-item disabled>资料（占位）</el-dropdown-item>
           <el-dropdown-item v-if="auth.role === 'admin'" command="admin">用户管理</el-dropdown-item>
+          <el-dropdown-item v-if="auth.role === 'admin'" command="admin-databases">数据库管理</el-dropdown-item>
           <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
         </el-dropdown-menu>
       </template>
