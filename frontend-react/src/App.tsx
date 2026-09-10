@@ -1,11 +1,9 @@
-import { Button } from '@/components/ui/button'
+import { RouterProvider } from 'react-router'
+
+import { router } from '@/routes/router'
 
 function App() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <Button>OpenChatBI</Button>
-    </div>
-  )
+  return <RouterProvider router={router} />
 }
 
 export default App
