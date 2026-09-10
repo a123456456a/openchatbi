@@ -1,0 +1,174 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "OpenChatBI 请求全流程",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "main-path",
+        "label": "主路径",
+        "focus": ["user", "chat_ui", "chat_api", "llm_node", "use_tool", "text2sql", "stream_out"],
+        "note": "Vue → FastAPI → llm_node → text2sql → NDJSON"
+      },
+      {
+        "id": "intent-context",
+        "label": "意图与上下文",
+        "focus": ["chat_api", "llm_node", "ask_human"],
+        "note": "bind_tools 选工具；ContextManager 裁剪"
+      },
+      {
+        "id": "retrieval-mcp",
+        "label": "向量与 MCP",
+        "focus": ["use_tool", "vector", "mcp", "text2sql"],
+        "note": "向量/BM25 召回；MCP 经 ToolNode"
+      }
+    ],
+    "output": "docs/diagrams/openchatbi-flow-v2.html"
+  },
+  "lanes": [
+    { "id": "ui", "label": "前端 Vue" },
+    { "id": "agent", "label": "API · Agent · HITL" },
+    { "id": "tools", "label": "工具 · 检索 · SQL" }
+  ],
+  "phases": [
+    { "id": "intake", "label": "接入", "fromCol": 0, "toCol": 1 },
+    { "id": "reason", "label": "意图 · 上下文", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "act", "label": "工具 · 回写", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["user", "chat_ui", "chat_api", "llm_node", "use_tool", "text2sql", "stream_out"],
+  "nodes": [
+    {
+      "id": "user",
+      "lane": "ui",
+      "col": 0,
+      "type": "external",
+      "label": "用户提问",
+      "sublabel": "自然语言 BI",
+      "width": 118
+    },
+    {
+      "id": "chat_ui",
+      "lane": "ui",
+      "col": 1,
+      "type": "frontend",
+      "label": "Vue Chat",
+      "sublabel": "stores/chat.ts",
+      "tag": "streamChat",
+      "width": 118
+    },
+    {
+      "id": "stream_out",
+      "lane": "ui",
+      "col": 5,
+      "type": "frontend",
+      "label": "流式渲染",
+      "sublabel": "applyEvent",
+      "tag": "NDJSON",
+      "width": 118
+    },
+    {
+      "id": "chat_api",
+      "lane": "agent",
+      "col": 1,
+      "type": "backend",
+      "label": "chat_stream",
+      "sublabel": "chat/routes.py",
+      "tag": "/api/chat/stream",
+      "width": 124
+    },
+    {
+      "id": "llm_node",
+      "lane": "agent",
+      "col": 2,
+      "type": "backend",
+      "label": "llm_node",
+      "sublabel": "agent_graph.py",
+      "tag": "意图+Context",
+      "width": 124
+    },
+    {
+      "id": "ask_human",
+      "lane": "agent",
+      "col": 3,
+      "type": "security",
+      "label": "AskHuman",
+      "sublabel": "interrupt",
+      "tag": "人机确认",
+      "width": 118
+    },
+    {
+      "id": "use_tool",
+      "lane": "agent",
+      "col": 4,
+      "type": "messagebus",
+      "label": "use_tool",
+      "sublabel": "ToolNode",
+      "tag": "分发工具",
+      "width": 118
+    },
+    {
+      "id": "vector",
+      "lane": "tools",
+      "col": 3,
+      "type": "database",
+      "label": "向量 / BM25",
+      "sublabel": "schema_retrival.py",
+      "tag": "Chroma 可选",
+      "width": 124
+    },
+    {
+      "id": "mcp",
+      "lane": "tools",
+      "col": 4,
+      "type": "cloud",
+      "label": "MCP 工具",
+      "sublabel": "mcp_tools.py",
+      "tag": "mcp_*",
+      "width": 118
+    },
+    {
+      "id": "text2sql",
+      "lane": "tools",
+      "col": 5,
+      "type": "backend",
+      "label": "text2sql",
+      "sublabel": "sql_graph.py",
+      "tag": "SQL→数仓",
+      "width": 124
+    }
+  ],
+  "edges": [
+    { "id": "e-user-ui", "from": "user", "to": "chat_ui", "variant": "default" },
+    { "id": "e-ui-api", "from": "chat_ui", "to": "chat_api", "label": "POST", "variant": "emphasis" },
+    { "id": "e-api-llm", "from": "chat_api", "to": "llm_node", "label": "astream", "variant": "emphasis" },
+    { "id": "e-llm-tool", "from": "llm_node", "to": "use_tool", "label": "tool_calls", "variant": "emphasis" },
+    { "id": "e-llm-human", "from": "llm_node", "to": "ask_human", "label": "AskHuman", "variant": "security", "role": "branch" },
+    { "id": "e-human-llm", "from": "ask_human", "to": "llm_node", "label": "用户回复", "variant": "security", "role": "return" },
+    { "id": "e-tool-mcp", "from": "use_tool", "to": "mcp", "label": "mcp_*", "variant": "dashed", "role": "branch" },
+    { "id": "e-tool-sql", "from": "use_tool", "to": "text2sql", "label": "text2sql", "variant": "emphasis" },
+    { "id": "e-vector-sql", "from": "vector", "to": "text2sql", "label": "列/示例召回", "variant": "dashed", "role": "branch" },
+    { "id": "e-sql-out", "from": "text2sql", "to": "stream_out", "label": "流式回写", "variant": "emphasis", "role": "return" },
+    { "id": "e-tool-llm", "from": "use_tool", "to": "llm_node", "label": "ToolMessage", "variant": "dashed", "role": "return" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "意图 · 上下文 · 工具",
+      "items": [
+        "意图：bind_tools 选工具名（agent_graph.py · agent_llm_call）",
+        "上下文：checkpointer + ContextManager.manage_context_messages",
+        "工具/MCP：建图注入 mcp_*，use_tool(ToolNode) 执行并回环"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "向量检索与代码锚点",
+      "items": [
+        "有 embedding→Chroma，否则 BM25；选表/示例内部召回",
+        "schema_retrival.py · text2sql_utils.LearnedSQLStore · mcp_tools.py"
+      ]
+    }
+  ]
+}

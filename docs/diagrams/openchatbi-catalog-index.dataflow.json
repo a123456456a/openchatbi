@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Catalog 向量建索引",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1080, 620],
+    "views": [
+      {
+        "id": "ingest",
+        "label": "元数据入库",
+        "focus": ["warehouse", "files", "store"],
+        "note": "数仓扫描或 YAML/CSV 写入 CatalogStore"
+      },
+      {
+        "id": "index-build",
+        "label": "建索引分支",
+        "focus": ["store", "vectorize", "chroma", "fallback"],
+        "note": "有 embedding→Chroma，否则 SimpleStore"
+      },
+      {
+        "id": "runtime",
+        "label": "运行时召回",
+        "focus": ["chroma", "fallback", "col_query", "sql_query"],
+        "note": "上路径列召回，下路径 SQL few-shot"
+      }
+    ],
+    "output": "docs/diagrams/openchatbi-catalog-v3.html"
+  },
+  "stages": [
+    { "label": "元数据源" },
+    { "label": "Catalog" },
+    { "label": "建索引" },
+    { "label": "索引存储" },
+    { "label": "运行时召回" }
+  ],
+  "nodes": [
+    {
+      "id": "warehouse",
+      "type": "database",
+      "label": "数仓 Schema",
+      "sublabel": "loader.py",
+      "stage": 0,
+      "row": 0,
+      "tag": "自动发现",
+      "width": 120
+    },
+    {
+      "id": "files",
+      "type": "external",
+      "label": "YAML / CSV",
+      "sublabel": "example/*",
+      "stage": 0,
+      "row": 2,
+      "tag": "业务元数据",
+      "width": 120
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "CatalogStore",
+      "sublabel": "factory.py",
+      "stage": 1,
+      "row": 1,
+      "tag": "file|database",
+      "width": 124
+    },
+    {
+      "id": "vectorize",
+      "type": "backend",
+      "label": "create_vector_db",
+      "sublabel": "utils.py",
+      "stage": 2,
+      "row": 1,
+      "tag": "列+SQL示例",
+      "width": 132
+    },
+    {
+      "id": "chroma",
+      "type": "database",
+      "label": "Chroma",
+      "sublabel": "columns/text2sql",
+      "stage": 3,
+      "row": 0,
+      "tag": "cosine",
+      "width": 120
+    },
+    {
+      "id": "fallback",
+      "type": "messagebus",
+      "label": "SimpleStore",
+      "sublabel": "BM25 回退",
+      "stage": 3,
+      "row": 2,
+      "tag": "无 embedding",
+      "width": 120
+    },
+    {
+      "id": "col_query",
+      "type": "backend",
+      "label": "列召回",
+      "sublabel": "schema_retrival",
+      "stage": 4,
+      "row": 0,
+      "tag": "选表",
+      "width": 120
+    },
+    {
+      "id": "sql_query",
+      "type": "backend",
+      "label": "SQL few-shot",
+      "sublabel": "LearnedSQLStore",
+      "stage": 4,
+      "row": 2,
+      "tag": "生成",
+      "width": 120
+    }
+  ],
+  "flows": [
+    {
+      "id": "f-wh-store",
+      "from": "warehouse",
+      "to": "store",
+      "label": "表结构扫描",
+      "classification": "schema",
+      "variant": "emphasis",
+      "route": "vertical-channel"
+    },
+    {
+      "id": "f-files-store",
+      "from": "files",
+      "to": "store",
+      "label": "说明与示例",
+      "classification": "catalog files",
+      "variant": "default",
+      "route": "vertical-channel"
+    },
+    {
+      "id": "f-store-v",
+      "from": "store",
+      "to": "vectorize",
+      "label": "组装索引文本",
+      "classification": "index input",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelDy": 30
+    },
+    {
+      "id": "f-v-chroma",
+      "from": "vectorize",
+      "to": "chroma",
+      "label": "有 embedding",
+      "classification": "Chroma",
+      "variant": "emphasis",
+      "route": "vertical-channel",
+      "labelDy": -24
+    },
+    {
+      "id": "f-v-fb",
+      "from": "vectorize",
+      "to": "fallback",
+      "label": "无 embedding",
+      "classification": "BM25",
+      "variant": "dashed",
+      "route": "vertical-channel",
+      "labelDy": 24
+    },
+    {
+      "id": "f-ch-col",
+      "from": "chroma",
+      "to": "col_query",
+      "label": "向量列召回",
+      "classification": "runtime",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelDy": -22
+    },
+    {
+      "id": "f-fb-sql",
+      "from": "fallback",
+      "to": "sql_query",
+      "label": "BM25 示例召回",
+      "classification": "runtime",
+      "variant": "dashed",
+      "route": "straight",
+      "labelDy": 22
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "来源 · 建索引",
+      "items": [
+        "Catalog：loader / YAML·CSV → CatalogStore（factory.py）",
+        "索引：build_columns_retriever + _init_sql_example → create_vector_db"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "存储 · 召回",
+      "items": [
+        "有 embedding→Chroma(columns/text2sql)；否则 SimpleStore(BM25)",
+        "运行时：schema_retrival 列召回 · LearnedSQLStore few-shot"
+      ]
+    }
+  ]
+}

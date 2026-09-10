@@ -1,0 +1,163 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Text2SQL 子图流程",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "happy-path",
+        "label": "成功主路径",
+        "focus": ["extract", "table_sel", "gen_sql", "exec_sql", "score", "gate", "viz"],
+        "note": "抽取→选表→生成→执行→打分→门控→可视化"
+      },
+      {
+        "id": "clarify",
+        "label": "澄清分支",
+        "focus": ["extract", "clarify", "table_sel"],
+        "note": "AskHuman / search_knowledge 回环 extraction"
+      },
+      {
+        "id": "retry-gate",
+        "label": "重试与门控",
+        "focus": ["exec_sql", "regen", "score", "gate"],
+        "note": "失败 regenerate；低分可 interrupt"
+      }
+    ],
+    "output": "docs/diagrams/openchatbi-text2sql-v2.html"
+  },
+  "lanes": [
+    { "id": "prep", "label": "抽取 · 选表" },
+    { "id": "sql", "label": "生成 · 执行" },
+    { "id": "quality", "label": "打分 · 出图" }
+  ],
+  "phases": [
+    { "id": "p1", "label": "理解", "fromCol": 0, "toCol": 1 },
+    { "id": "p2", "label": "写 SQL", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "p3", "label": "质检出图", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["extract", "table_sel", "gen_sql", "exec_sql", "score", "gate", "viz"],
+  "nodes": [
+    {
+      "id": "extract",
+      "lane": "prep",
+      "col": 0,
+      "type": "backend",
+      "label": "info_extraction",
+      "sublabel": "extraction.py",
+      "tag": "抽实体",
+      "width": 132
+    },
+    {
+      "id": "clarify",
+      "lane": "prep",
+      "col": 1,
+      "type": "security",
+      "label": "AskHuman / search",
+      "sublabel": "sql_graph.py",
+      "tag": "interrupt",
+      "width": 132
+    },
+    {
+      "id": "table_sel",
+      "lane": "prep",
+      "col": 2,
+      "type": "database",
+      "label": "table_selection",
+      "sublabel": "schema_linking.py",
+      "tag": "选表",
+      "width": 128
+    },
+    {
+      "id": "gen_sql",
+      "lane": "sql",
+      "col": 2,
+      "type": "backend",
+      "label": "generate_sql",
+      "sublabel": "generate_sql.py",
+      "tag": "写 SQL",
+      "width": 124
+    },
+    {
+      "id": "exec_sql",
+      "lane": "sql",
+      "col": 3,
+      "type": "database",
+      "label": "execute_sql",
+      "sublabel": "generate_sql.py",
+      "tag": "查数仓",
+      "width": 124
+    },
+    {
+      "id": "regen",
+      "lane": "sql",
+      "col": 4,
+      "type": "messagebus",
+      "label": "regenerate_sql",
+      "sublabel": "错误重写",
+      "tag": "retry",
+      "width": 124
+    },
+    {
+      "id": "score",
+      "lane": "quality",
+      "col": 3,
+      "type": "backend",
+      "label": "score_sql",
+      "sublabel": "confidence.py",
+      "tag": "六项打分",
+      "width": 118
+    },
+    {
+      "id": "gate",
+      "lane": "quality",
+      "col": 4,
+      "type": "security",
+      "label": "confidence_gate",
+      "sublabel": "默认可关",
+      "tag": "approve",
+      "width": 124
+    },
+    {
+      "id": "viz",
+      "lane": "quality",
+      "col": 5,
+      "type": "frontend",
+      "label": "visualization",
+      "sublabel": "visualization.py",
+      "tag": "图表 DSL",
+      "width": 124
+    }
+  ],
+  "edges": [
+    { "id": "e-ex-ts", "from": "extract", "to": "table_sel", "label": "next", "variant": "emphasis" },
+    { "id": "e-ex-cl", "from": "extract", "to": "clarify", "label": "需补充", "variant": "security", "role": "branch" },
+    { "id": "e-cl-ex", "from": "clarify", "to": "extract", "label": "回抽", "variant": "security", "role": "return" },
+    { "id": "e-ts-gen", "from": "table_sel", "to": "gen_sql", "label": "schema", "variant": "emphasis" },
+    { "id": "e-gen-ex", "from": "gen_sql", "to": "exec_sql", "label": "execute", "variant": "emphasis" },
+    { "id": "e-ex-sc", "from": "exec_sql", "to": "score", "label": "success", "variant": "emphasis" },
+    { "id": "e-ex-rg", "from": "exec_sql", "to": "regen", "label": "失败→重写→再执行", "variant": "dashed", "role": "branch" },
+    { "id": "e-sc-gt", "from": "score", "to": "gate", "variant": "default" },
+    { "id": "e-gt-viz", "from": "gate", "to": "viz", "label": "approve", "variant": "emphasis" },
+    { "id": "e-gt-rg", "from": "gate", "to": "regen", "label": "reject", "variant": "security", "role": "branch" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "子图与选表生成",
+      "items": [
+        "入口：sql_graph.build_sql_graph；主 Agent 经 text2sql 工具调用",
+        "选表 schema_linking.py；生成/执行 generate_sql.create_sql_nodes"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "澄清 · 重试 · 门控",
+      "items": [
+        "澄清：AskHuman / search_knowledge 回 information_extraction",
+        "score_sql→confidence_gate；enable_confidence_gate=false 时默认放行出图"
+      ]
+    }
+  ]
+}
