@@ -1,7 +1,9 @@
+import { Button } from '@/components/ui/button'
+
 function App() {
   return (
-    <div className="flex h-full items-center justify-center text-sm text-slate-500">
-      OpenChatBI (React) — 脚手架就绪
+    <div className="flex h-full items-center justify-center">
+      <Button>OpenChatBI</Button>
     </div>
   )
 }
