@@ -217,6 +217,7 @@ runledger_out/
 specs
 openspec
 .specify
-.cursor
+.cursor/*
+!.cursor/environment.json
 .claude
 chroma_db_new
