@@ -3,30 +3,28 @@ import { computed, ref, watch } from 'vue'
 
 import ChartView from './ChartView.vue'
 import Markdown from '../common/Markdown.vue'
+import { isToolStep, stepTitle, toolBodyText } from '../../lib/chatSteps'
 import type { ChatStep } from '../../types/stream'
 
-const props = defineProps<{
-  steps: ChatStep[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    steps: ChatStep[]
+    defaultOpen?: boolean
+  }>(),
+  { defaultOpen: true },
+)
 
-/**
- * `tool` / `tool_call` / `sub_agent` steps only announce that the model is
- * about to invoke something — they carry no result and just add noise, so
- * the UI never renders them. Everything else (`tool_result`, `sql`,
- * `execute_sql`, `visualization`, `tables`, `confidence`, `tool_error`, ...)
- * is an actual outcome the user should be able to see.
- */
-const HIDDEN_STEP_KINDS = new Set(['tool', 'tool_call', 'sub_agent'])
+const visibleSteps = computed(() => props.steps)
 
-const visibleSteps = computed(() => props.steps.filter((s) => !HIDDEN_STEP_KINDS.has(s.kind)))
-
-// Results are shown expanded by default so they're visible without an extra
+// Process steps default expanded so results are visible without an extra
 // click; newly streamed-in steps are auto-added while preserving any manual
-// collapse the user already did on earlier steps.
+// collapse the user already did on earlier steps. Tool steps pass
+// defaultOpen=false and stay collapsed unless the user opens them.
 const activeNames = ref<string[]>([])
 watch(
-  visibleSteps,
-  (steps) => {
+  [visibleSteps, () => props.defaultOpen],
+  ([steps, defaultOpen]) => {
+    if (!defaultOpen) return
     for (const s of steps) {
       if (!activeNames.value.includes(s.id)) activeNames.value.push(s.id)
     }
@@ -45,6 +43,10 @@ function csvData(step: ChatStep): string | undefined {
   const data = step.data?.data
   return typeof data === 'string' ? data : undefined
 }
+
+function bodyText(step: ChatStep): string {
+  return isToolStep(step) ? toolBodyText(step) : step.text
+}
 </script>
 
 <template>
@@ -53,11 +55,11 @@ function csvData(step: ChatStep): string | undefined {
       <el-collapse-item
         v-for="s in visibleSteps"
         :key="s.id"
-        :title="s.label || s.kind || '结果'"
+        :title="stepTitle(s)"
         :name="s.id"
       >
         <div class="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
-          <Markdown :text="s.text" class="text-xs leading-relaxed" />
+          <Markdown :text="bodyText(s)" class="text-xs leading-relaxed" />
         </div>
         <ChartView v-if="visualizationDsl(s)" :visualization-dsl="visualizationDsl(s)!" :csv-data="csvData(s)" />
       </el-collapse-item>

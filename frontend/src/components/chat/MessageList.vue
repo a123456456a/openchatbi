@@ -5,6 +5,7 @@ import { ChatDotRound, CircleCheck, DocumentCopy } from '@element-plus/icons-vue
 import StepCollapse from './StepCollapse.vue'
 import ThinkingCollapse from './ThinkingCollapse.vue'
 import Markdown from '../common/Markdown.vue'
+import { assistantCopyText, processSteps, toolBodyText, toolSteps } from '../../lib/chatSteps'
 import type { ChatMessage } from '../../types/stream'
 
 defineProps<{
@@ -43,10 +44,15 @@ async function copyContent(id: string, text: string) {
 
         <div class="space-y-2.5">
           <ThinkingCollapse :thinking="m.thinking" :streaming="m.streaming" />
-          <StepCollapse :steps="m.steps" />
+          <StepCollapse :steps="processSteps(m.steps)" />
 
-          <div v-if="m.content" class="text-sm text-slate-800">
-            <Markdown :text="m.content" />
+          <div v-if="m.content || toolSteps(m.steps).length" class="space-y-3 text-sm text-slate-800">
+            <Markdown v-if="m.content" :text="m.content" />
+            <Markdown
+              v-for="s in toolSteps(m.steps)"
+              :key="s.id"
+              :text="toolBodyText(s)"
+            />
           </div>
           <div
             v-else-if="m.streaming && !m.thinking && m.steps.length === 0"
@@ -54,15 +60,20 @@ async function copyContent(id: string, text: string) {
           >
             思考中…
           </div>
+
+          <StepCollapse :steps="toolSteps(m.steps)" :default-open="false" />
         </div>
 
-        <div v-if="!m.streaming && m.content" class="mt-1.5 flex items-center gap-1">
+        <div
+          v-if="!m.streaming && (m.content || toolSteps(m.steps).length)"
+          class="mt-1.5 flex items-center gap-1"
+        >
           <button
             type="button"
             aria-label="复制回答"
             title="复制"
             class="inline-flex items-center gap-1 rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-slate-100 hover:text-[var(--color-foreground)]"
-            @click="copyContent(m.id, m.content)"
+            @click="copyContent(m.id, assistantCopyText(m.content, m.steps))"
           >
             <el-icon :size="14">
               <CircleCheck v-if="copiedId === m.id" />
