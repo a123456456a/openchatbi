@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+import Markdown from '../common/Markdown.vue'
+
 const props = defineProps<{
   thinking: string
   streaming?: boolean
@@ -32,10 +34,9 @@ const visible = computed(() => Boolean(props.thinking))
   <div v-if="visible" class="mt-3 space-y-1 border-t border-slate-100 pt-2">
     <el-collapse v-model="activeNames" class="thinking-collapse">
       <el-collapse-item title="思考过程" name="thinking">
-        <pre
-          class="m-0 whitespace-pre-wrap break-words rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600"
-          >{{ thinking }}</pre
-        >
+        <div class="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+          <Markdown :text="thinking" class="text-xs leading-relaxed" />
+        </div>
       </el-collapse-item>
     </el-collapse>
   </div>

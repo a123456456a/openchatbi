@@ -29,6 +29,8 @@
 | 设置 LLM（供应商/Key/模型/Base URL） | ✅ `SettingsDialog.vue` | ✅ `components/layout/SettingsDialog.tsx` | 同 `/api/me/llm-settings`（GET/PUT/DELETE） |
 | 保存校验（`requires_base_url`、已有 key 免填） | ✅ | ✅ | |
 | 管理员用户管理（列表/创建/改角色/启停） | ✅ `views/admin/UsersView.vue` | ✅ `pages/admin/UsersPage.tsx` | 同 `/api/users` |
+| 消息 / 步骤 Markdown 渲染 | ✅ `components/common/Markdown.vue`（`markdown-it` + DOMPurify，`@tailwindcss/typography`） | ✅ `components/common/Markdown.tsx`（同上） | 2026-09-10 新增：此前消息内容与步骤详情用 `whitespace-pre-wrap` 纯文本渲染，标题/粗体/列表/表格/代码块等均显示原始符号（bug）；现统一走 sanitize 后的 markdown 渲染 |
+| 可视化图表展示（`visualization_dsl` + CSV） | ✅ `components/chat/ChartView.vue`（Chart.js） | ✅ `components/chat/ChartView.tsx`（Chart.js） | 2026-09-10 新增：此前 `ChatStep` 未携带后端 `generate_visualization` 步骤的 `data`（`visualization_dsl` + CSV），图表数据被直接丢弃、无法显示（bug）；现补上 `data` 字段并用 Chart.js 渲染 line/bar/pie/scatter/histogram，`table`/`box` 与 DSL 报错场景渲染为数据表 |
 
 ## 已知差异（视觉，非功能性）
 

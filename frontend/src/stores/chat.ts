@@ -103,6 +103,8 @@ export const useChatStore = defineStore('chat', () => {
           level: Number(event.level ?? 0),
           label: String(event.label ?? ''),
           text: String(event.text ?? ''),
+          data:
+            event.data && typeof event.data === 'object' ? (event.data as Record<string, unknown>) : undefined,
         }
         assistantMsg.steps.push(step)
       } else if (event.type === 'token') {
