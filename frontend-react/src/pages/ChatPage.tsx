@@ -41,6 +41,9 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (sessionId) loadSession(sessionId)
+    // Composer draft is scoped to the page, not any one session — clear it on every
+    // session switch (sidebar click, "+" new chat, …) so text never leaks across chats.
+    setInput('')
   }, [sessionId, loadSession])
 
   function onSend() {
@@ -48,6 +51,12 @@ export default function ChatPage() {
     const text = input
     setInput('')
     void send(sessionId, text)
+  }
+
+  function newChat() {
+    const id = crypto.randomUUID()
+    ensure(id)
+    navigate(`/chat/${id}`)
   }
 
   const hasMessages = messages.length > 0
@@ -87,7 +96,14 @@ export default function ChatPage() {
 
             <div className="border-t border-[var(--color-border)] bg-[var(--color-card)] p-4">
               <div className="mx-auto max-w-3xl">
-                <ChatComposer value={input} onChange={setInput} streaming={streaming} onSend={onSend} onStop={stop} />
+                <ChatComposer
+                  value={input}
+                  onChange={setInput}
+                  streaming={streaming}
+                  onSend={onSend}
+                  onStop={stop}
+                  onNewChat={newChat}
+                />
               </div>
             </div>
           </>
