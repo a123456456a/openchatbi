@@ -7,14 +7,23 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from openchatbi import config
+from openchatbi.tool.report_writers import write_docx, write_xlsx
 from openchatbi.utils import log
+
+TEXT_FORMATS = {"md", "csv", "txt", "json", "html", "xml"}
+OFFICE_FORMATS = {"docx", "xlsx"}
+ALLOWED_FORMATS = TEXT_FORMATS | OFFICE_FORMATS
 
 
 class SaveReportInput(BaseModel):
     content: str = Field(description="The content of the report to save")
     title: str = Field(description="The title of the report (will be used in filename)")
     file_format: str = Field(
-        description="The file format/extension, only support 'md', 'csv', 'txt', 'json', 'html', 'xml'"
+        description=(
+            "The file format/extension, only support 'md', 'csv', 'txt', 'json', 'html', 'xml' "
+            "(written verbatim), or 'docx'/'xlsx' (the markdown-ish `content` — headings, lists, "
+            "tables, JSON, or CSV — is converted into a Word document or Excel workbook)"
+        )
     )
 
 
@@ -23,15 +32,18 @@ def save_report(content: str, title: str, file_format: str = "md") -> str:
     """Save a report to a file with timestamp and title in filename.
 
     Args:
-        content: The content of the report to save
+        content: The content of the report to save. For 'docx'/'xlsx', write it as markdown
+            (headings, bullet/numbered lists, `**bold**`/`*italic*`/`` `code` ``, and pipe
+            tables) or as CSV/JSON tabular data — it will be converted automatically.
         title: The title of the report (will be used in filename)
-        file_format: The file format/extension, only support 'md', 'csv', 'txt', 'json', 'html', 'xml'
+        file_format: The file format/extension. Supported: 'md', 'csv', 'txt', 'json', 'html',
+            'xml' (saved as-is), or 'docx'/'xlsx' (converted from the markdown/CSV/JSON content
+            into an Office document) — use these when the user asks for a Word or Excel file.
 
     Returns:
         str: Success message with download link or error message
     """
-    allowed_formats = {"md", "csv", "txt", "json", "html", "xml"}
-    if file_format not in allowed_formats:
+    if file_format not in ALLOWED_FORMATS:
         raise ValueError(f"Unsupported file format: {file_format}")
 
     try:
@@ -52,9 +64,14 @@ def save_report(content: str, title: str, file_format: str = "md") -> str:
         filename = f"{timestamp}_{clean_title}.{file_format}"
         file_path = Path(report_dir) / filename
 
-        # Write content to file
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
+        if file_format == "docx":
+            write_docx(file_path, title, content)
+        elif file_format == "xlsx":
+            write_xlsx(file_path, title, content)
+        else:
+            # Write content to file
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
 
         log(f"Report saved: {file_path}")
 
