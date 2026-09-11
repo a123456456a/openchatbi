@@ -5,7 +5,6 @@ import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.llm.graph_cache import (
-    _checkpointer,
     _graphs,
     _graphs_lock,
     get_or_build_graph,
@@ -54,6 +53,10 @@ def test_get_or_build_survives_concurrent_invalidate():
                 "backend.llm.graph_cache.get_async_memory_store",
                 new=AsyncMock(return_value=None),
             ),
+            patch(
+                "backend.llm.graph_cache.get_async_checkpointer",
+                new=AsyncMock(return_value=object()),
+            ),
             patch("backend.llm.graph_cache.config") as cfg,
         ):
             cfg.get.return_value.catalog_store = "catalog"
@@ -80,9 +83,11 @@ def test_get_or_build_passes_checkpointer():
     try:
         build = AsyncMock(return_value=object())
         memory = object()
+        checkpointer = object()
         with (
             patch("backend.llm.graph_cache.build_agent_graph_async", new=build),
             patch("backend.llm.graph_cache.get_async_memory_store", new=AsyncMock(return_value=memory)),
+            patch("backend.llm.graph_cache.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
             patch("backend.llm.graph_cache.set_llm_override", return_value="tok"),
             patch("backend.llm.graph_cache.reset_llm_override"),
             patch("backend.llm.graph_cache.config") as cfg,
@@ -91,7 +96,7 @@ def test_get_or_build_passes_checkpointer():
             asyncio.run(get_or_build_graph("u1", "deepseek", MagicMock(), "hashhashhashhash"))
 
         kwargs = build.await_args.kwargs
-        assert kwargs["checkpointer"] is _checkpointer
+        assert kwargs["checkpointer"] is checkpointer
         assert kwargs["memory_store"] is memory
         assert kwargs["llm_provider"] is None
     finally:

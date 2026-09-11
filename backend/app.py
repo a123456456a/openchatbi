@@ -28,7 +28,15 @@ async def lifespan(app: FastAPI):
         warehouse_service.apply_active_connection_on_startup(session)
     finally:
         session.close()
-    yield
+    # Eager-init persistent checkpointer so first chat does not pay setup cost,
+    # and so misconfiguration (e.g. postgres without URL) fails at startup.
+    from backend.llm.checkpointer import cleanup_async_checkpointer, get_async_checkpointer
+
+    await get_async_checkpointer()
+    try:
+        yield
+    finally:
+        await cleanup_async_checkpointer()
 
 
 app = FastAPI(title="OpenChatBI API", lifespan=lifespan)

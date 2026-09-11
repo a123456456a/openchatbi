@@ -283,6 +283,22 @@ export CONFIG_FILE=YOUR_CONFIG_FILE_PATH
 python run_cli.py
 ```
 
+
+### LangGraph checkpointer (sessions / interrupts)
+
+Chat agent state is persisted with a durable LangGraph checkpointer (default **SQLite**) so interrupts and sessions survive process restart and can be shared across multi-worker processes on the same filesystem:
+
+```bash
+export CHECKPOINTER_BACKEND=sqlite                    # default
+export CHECKPOINTER_SQLITE_PATH=./data/checkpoints.db # default
+# Optional later: Postgres (requires langgraph-checkpoint-postgres)
+# export CHECKPOINTER_BACKEND=postgres
+# export CHECKPOINTER_POSTGRES_URL=postgresql://user:pass@host:5432/dbname
+export RUN_CANCEL_SQLITE_PATH=./data/run_cancels.db   # shared 「停止生成」 cancel ledger
+```
+
+「停止生成」 calls `POST /api/chat/sessions/{session_id}/cancel`, which cancels the server-side run and clears the thread so the next message starts a **new** turn (not a half-finished resume).
+
 ## Configuration Instructions
 
 The configuration template is provided at `config.yaml.template`. Key configuration sections include:

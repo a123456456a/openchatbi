@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import logging
 from typing import Any
 
 from cryptography.fernet import InvalidToken
@@ -15,13 +16,20 @@ from sqlalchemy.orm import Session
 
 from backend.auth.deps import get_current_user
 from backend.auth.models import User, UserLlmConfig
-from backend.chat.schemas import AbortInterruptResponse, ChatStreamRequest
+from backend.chat.run_control import (
+    clear_cancel,
+    is_cancel_requested,
+    register_run,
+    request_cancel,
+    unregister_run,
+)
+from backend.chat.schemas import AbortInterruptResponse, CancelRunResponse, ChatStreamRequest
 from backend.db import get_db
-from backend.warehouse.gate import require_active_warehouse_or_demo
 from backend.llm.crypto import decrypt_api_key
 from backend.llm.factory import build_chat_model
 from backend.llm.graph_cache import get_or_build_graph
 from backend.llm.service import DECRYPT_FAILED_DETAIL
+from backend.warehouse.gate import require_active_warehouse_or_demo
 from openchatbi.observability.tracing import build_run_config
 from openchatbi.streaming import (
     AgentStreamProcessor,
@@ -34,6 +42,7 @@ from openchatbi.streaming import (
 from openchatbi.tool.memory import get_async_memory_store
 
 chat_router = APIRouter(prefix="/api", tags=["chat"])
+logger = logging.getLogger(__name__)
 
 MISSING_LLM_SETTINGS_DETAIL = "请先在设置中配置模型"
 
@@ -113,6 +122,15 @@ def _json_safe(obj: Any) -> Any:
         return str(obj)
 
 
+async def _clear_thread_state(graph: Any, thread_id: str) -> bool:
+    """Delete checkpoint thread so the next message cannot resume a half-finished turn."""
+    checkpointer = getattr(graph, "checkpointer", None)
+    if checkpointer is None:
+        return False
+    await checkpointer.adelete_thread(thread_id)
+    return True
+
+
 @chat_router.post("/chat/stream")
 async def chat_stream(
     req: ChatStreamRequest,
@@ -129,6 +147,8 @@ async def chat_stream(
     # Fail-closed: do not silently run Text2SQL against config.yaml demo SQLite.
     require_active_warehouse_or_demo(db)
     run_config = build_run_config(user_id=user_id, session_id=session_id)
+    thread_id = (run_config.get("configurable") or {}).get("thread_id") or f"{user_id}-{session_id}"
+    run_config.setdefault("configurable", {})["thread_id"] = thread_id
 
     provider, llm, config_hash = resolve_user_chat_llm(db, current_user)
     try:
@@ -147,38 +167,122 @@ async def chat_stream(
         stream_input = {"messages": [("user", req.input)]}
 
     async def text_generator():
-        processor = AgentStreamProcessor()
-        async for namespace, event_type, event_value in graph.astream(
-            stream_input, config=run_config, stream_mode=["updates", "messages"], subgraphs=True
-        ):
-            for event in processor.process(namespace, event_type, event_value):
-                if isinstance(event, StreamToken) and event.is_final and event.text:
-                    yield event.text
+        cancel_event = await register_run(thread_id)
+        cancelled = False
+        try:
+            processor = AgentStreamProcessor()
+            async for namespace, event_type, event_value in graph.astream(
+                stream_input, config=run_config, stream_mode=["updates", "messages"], subgraphs=True
+            ):
+                if cancel_event.is_set() or await is_cancel_requested(thread_id):
+                    cancelled = True
+                    break
+                for event in processor.process(namespace, event_type, event_value):
+                    if isinstance(event, StreamToken) and event.is_final and event.text:
+                        yield event.text
+                    if cancel_event.is_set() or await is_cancel_requested(thread_id):
+                        cancelled = True
+                        break
+                if cancelled:
+                    break
+        finally:
+            if cancelled or cancel_event.is_set() or await is_cancel_requested(thread_id):
+                try:
+                    await _clear_thread_state(graph, thread_id)
+                except Exception:
+                    logger.exception("Failed to clear thread %s after cancel", thread_id)
+                await clear_cancel(thread_id)
+            await unregister_run(thread_id, cancel_event)
 
     async def event_generator():
-        processor = AgentStreamProcessor()
-        async for namespace, event_type, event_value in graph.astream(
-            stream_input, config=run_config, stream_mode=["updates", "messages"], subgraphs=True
-        ):
-            for event in processor.process(namespace, event_type, event_value):
-                yield json.dumps(_event_to_dict(event), ensure_ascii=False) + "\n"
+        cancel_event = await register_run(thread_id)
+        cancelled = False
+        try:
+            processor = AgentStreamProcessor()
+            async for namespace, event_type, event_value in graph.astream(
+                stream_input, config=run_config, stream_mode=["updates", "messages"], subgraphs=True
+            ):
+                if cancel_event.is_set() or await is_cancel_requested(thread_id):
+                    cancelled = True
+                    break
+                for event in processor.process(namespace, event_type, event_value):
+                    yield json.dumps(_event_to_dict(event), ensure_ascii=False) + "\n"
+                    if cancel_event.is_set() or await is_cancel_requested(thread_id):
+                        cancelled = True
+                        break
+                if cancelled:
+                    break
 
-        usage = processor.emit_turn_usage()
-        if usage is not None:
-            yield json.dumps(_event_to_dict(usage), ensure_ascii=False) + "\n"
+            if cancelled:
+                yield json.dumps({"type": "cancelled"}, ensure_ascii=False) + "\n"
+                return
 
-        state = await graph.aget_state(run_config)
-        if state.interrupts:
-            value = state.interrupts[0].value or {}
-            interrupt = StreamInterrupt(text=value.get("text", ""), buttons=value.get("buttons", []) or [])
-            yield json.dumps(_event_to_dict(interrupt), ensure_ascii=False) + "\n"
-        else:
-            final = extract_final_answer(processor.final_response)
-            yield json.dumps({"type": "final_answer", "text": final}, ensure_ascii=False) + "\n"
+            usage = processor.emit_turn_usage()
+            if usage is not None:
+                yield json.dumps(_event_to_dict(usage), ensure_ascii=False) + "\n"
+
+            state = await graph.aget_state(run_config)
+            if state.interrupts:
+                value = state.interrupts[0].value or {}
+                interrupt = StreamInterrupt(text=value.get("text", ""), buttons=value.get("buttons", []) or [])
+                yield json.dumps(_event_to_dict(interrupt), ensure_ascii=False) + "\n"
+            else:
+                final = extract_final_answer(processor.final_response)
+                yield json.dumps({"type": "final_answer", "text": final}, ensure_ascii=False) + "\n"
+        finally:
+            if cancelled or cancel_event.is_set() or await is_cancel_requested(thread_id):
+                try:
+                    await _clear_thread_state(graph, thread_id)
+                except Exception:
+                    logger.exception("Failed to clear thread %s after cancel", thread_id)
+                await clear_cancel(thread_id)
+            await unregister_run(thread_id, cancel_event)
 
     if (req.mode or "events") == "text":
         return StreamingResponse(text_generator(), media_type="text/plain")
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+
+@chat_router.post("/chat/sessions/{session_id}/cancel", response_model=CancelRunResponse)
+async def cancel_chat_run(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CancelRunResponse:
+    """Truly cancel the server-side run for 「停止生成」.
+
+    Signals the in-flight stream (same- or cross-worker via shared cancel ledger)
+    and clears the LangGraph thread so the next user message starts a new turn
+    rather than resuming a half-finished / interrupted graph.
+    """
+    user_id = current_user.id
+    require_active_warehouse_or_demo(db)
+    run_config = build_run_config(user_id=user_id, session_id=session_id)
+    thread_id = (run_config.get("configurable") or {}).get("thread_id") or f"{user_id}-{session_id}"
+
+    had_running = await request_cancel(thread_id)
+
+    provider, llm, config_hash = resolve_user_chat_llm(db, current_user)
+    try:
+        graph = await get_or_build_graph(user_id, provider, llm, config_hash)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    thread_cleared = False
+    try:
+        thread_cleared = await _clear_thread_state(graph, thread_id)
+    except Exception as exc:
+        logger.exception("cancel: adelete_thread failed for %s", thread_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear session thread: {exc}",
+        ) from exc
+
+    return CancelRunResponse(
+        cancelled=True,
+        had_running_run=had_running,
+        thread_cleared=thread_cleared,
+    )
 
 
 @chat_router.post("/chat/sessions/{session_id}/abort-interrupt", response_model=AbortInterruptResponse)

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import { streamChat } from '@/api/chat'
+import { cancelChatRun, streamChat } from '@/api/chat'
 import type { ChatMessage, StreamEvent } from '@/types/stream'
 import { useAuthStore } from './auth'
 import { applyStreamEvent } from './chatEvents'
@@ -169,10 +169,20 @@ export const useChatStore = create<ChatState>((set, get) => {
   },
 
   stop() {
+    const sid = get().sessionId
     abortController?.abort()
     abortController = null
     cancelStreamPaint()
     set({ streaming: false })
+    if (sid) {
+      void cancelChatRun(sid, {
+        getAccessToken: () => useAuthStore.getState().accessToken,
+        getStoredRefresh: () => useAuthStore.getState().getStoredRefresh(),
+        refresh: () => useAuthStore.getState().refresh(),
+      }).catch(() => {
+        /* best-effort server cancel; client already aborted the stream */
+      })
+    }
   },
   }
 })
