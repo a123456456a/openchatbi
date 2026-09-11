@@ -26,6 +26,8 @@ type SettingsState = {
   load: () => Promise<void>
   save: (form: SettingsForm) => Promise<void>
   removeProvider: (provider: string) => Promise<void>
+  /** Switch the active provider among already-configured ones (no key resend needed). */
+  setActiveProvider: (provider: string) => Promise<void>
   openSettings: () => void
   closeSettings: () => void
   chatProvider: () => string | null
@@ -70,6 +72,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   async removeProvider(provider) {
     await deleteLlmProvider(provider)
     await get().load()
+  },
+
+  async setActiveProvider(provider) {
+    const data = await saveLlmSettings({ active_provider: provider })
+    set({ activeProvider: data.active_provider, configs: data.configs, catalog: data.catalog })
   },
 
   openSettings: () => set({ settingsOpen: true }),
