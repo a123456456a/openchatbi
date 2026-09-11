@@ -25,9 +25,10 @@
 | 步骤（steps）展示 | ✅ `StepCollapse.vue` | ✅ `components/chat/StepCollapse.tsx` | 2026-09-10 修复：`use_tool`（主图）节点此前只处理工具报错，成功的工具结果被静默丢弃、从未到达 UI（只显示前置的「Using tool: ...」调用公告），见 `openchatbi/streaming.py`；现补发 `kind="tool_result"` 步骤。前端同时不再渲染纯「调用」类步骤（`tool`/`tool_call`/`sub_agent`）。2026-09-10 调整：`tool_result` / `tool_error` 的完整内容（`data.result` / `data.error`）渲染在最终正文中，工具折叠面板移到正文之后且默认折叠；SQL / 可视化等过程步骤仍在正文前默认展开 |
 | 思考过程折叠 | ✅ `ThinkingCollapse.vue` | ✅ `components/chat/ThinkingCollapse.tsx` | 流式中自动展开，结束后自动折叠；消息内排版顺序为「思考过程 → 过程步骤（SQL/可视化等）→ 正文（最终回答 + 工具完整结果）→ 工具折叠（默认收起）」 |
 | 停止生成 | ✅ `chat.stop()` | ✅ `chat.stop()`（AbortController） | |
-| interrupt 确认弹窗 | ✅ `InterruptDialog.vue` | ✅ `components/chat/InterruptDialog.tsx` | |
+| interrupt 确认提示（inline prompt） | ✅ `InterruptPrompt.vue` | ✅ `components/chat/InterruptPrompt.tsx` | 2026-09-11：Vue 已对齐 React（选项/自定义回复走 `chat.send`，关闭 best-effort `abort-interrupt`）；组件由 Dialog 重命名为 Prompt |
 | 设置 LLM（供应商/Key/模型/Base URL） | ✅ `SettingsDialog.vue` | ✅ `components/layout/SettingsDialog.tsx` | 同 `/api/me/llm-settings`（GET/PUT/DELETE） |
 | 保存校验（`requires_base_url`、已有 key 免填） | ✅ | ✅ | |
+| 未配置 LLM 时引导去设置 | ✅ `ChatView.vue` + `stores/chat.ts`（自动 `openSettings` +「去设置」CTA） | ✅ `ChatPage.tsx` + `stores/chat.ts`（自动 `openSettings` +「去设置」CTA） | 匹配后端 `MISSING_LLM_SETTINGS_DETAIL`；未配置时不再只显示裸错误 |
 | 管理员用户管理（列表/创建/改角色/启停） | ✅ `views/admin/UsersView.vue` | ✅ `pages/admin/UsersPage.tsx` | 同 `/api/users` |
 | 消息 / 步骤 Markdown 渲染 | ✅ `components/common/Markdown.vue`（`markdown-it` + DOMPurify，`@tailwindcss/typography`） | ✅ `components/common/Markdown.tsx`（同上） | 2026-09-10 新增：此前消息内容与步骤详情用 `whitespace-pre-wrap` 纯文本渲染，标题/粗体/列表/表格/代码块等均显示原始符号（bug）；现统一走 sanitize 后的 markdown 渲染 |
 | 可视化图表展示（`visualization_dsl` + CSV） | ✅ `components/chat/ChartView.vue`（Chart.js） | ✅ `components/chat/ChartView.tsx`（Chart.js） | 2026-09-10 新增：此前 `ChatStep` 未携带后端 `generate_visualization` 步骤的 `data`（`visualization_dsl` + CSV），图表数据被直接丢弃、无法显示（bug）；现补上 `data` 字段并用 Chart.js 渲染 line/bar/pie/scatter/histogram，`table`/`box` 与 DSL 报错场景渲染为数据表 |
