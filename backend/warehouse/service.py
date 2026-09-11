@@ -1,3 +1,4 @@
+import copy
 import logging
 from typing import Any
 
@@ -157,7 +158,7 @@ def update_connection(
     db.refresh(row)
     runtime_apply: ConnectionRuntimeApplyStatus | None = None
     if row.is_active:
-        runtime_apply = _apply_connection_to_runtime(row)
+        runtime_apply, _ = _apply_connection_to_runtime(row)
     return row, runtime_apply
 
 
@@ -171,11 +172,38 @@ def delete_connection(db: Session, connection_id: str) -> None:
 
 def activate_connection(db: Session, connection_id: str) -> tuple[DataWarehouseConnection, ConnectionRuntimeApplyStatus]:
     row = get_connection(db, connection_id)
+    previous_active = (
+        db.query(DataWarehouseConnection)
+        .filter(DataWarehouseConnection.is_active.is_(True), DataWarehouseConnection.id != row.id)
+        .first()
+    )
+    previous_active_id = previous_active.id if previous_active is not None else None
+    already_active = bool(row.is_active)
+
     db.query(DataWarehouseConnection).filter(DataWarehouseConnection.id != row.id).update({"is_active": False})
     row.is_active = True
     db.commit()
     db.refresh(row)
-    runtime_apply = _apply_connection_to_runtime(row)
+
+    runtime_apply, revert_activation = _apply_connection_to_runtime(row)
+    if revert_activation and not already_active:
+        row.is_active = False
+        if previous_active_id is not None:
+            previous = db.get(DataWarehouseConnection, previous_active_id)
+            if previous is not None:
+                previous.is_active = True
+        db.commit()
+        db.refresh(row)
+        rollback_note = (
+            f"activation rolled back; is_active restored to connection {previous_active_id}"
+            if previous_active_id is not None
+            else "activation rolled back; no connection left active"
+        )
+        if runtime_apply.message:
+            runtime_apply.message = f"{runtime_apply.message}; {rollback_note}"
+        else:
+            runtime_apply.message = rollback_note
+        logger.warning("Activation of %s rolled back after catalog sync failure", row.name)
     return row, runtime_apply
 
 
@@ -195,7 +223,7 @@ def _decrypt(ciphertext: str | None) -> str | None:
 
 def _apply_connection_to_runtime(
     row: DataWarehouseConnection, *, sync_schema: bool = True
-) -> ConnectionRuntimeApplyStatus:
+) -> tuple[ConnectionRuntimeApplyStatus, bool]:
     """Best-effort: push the activated connection into the running openchatbi
     config/catalog store and drop cached agent graphs. Never raises -- if the
     openchatbi runtime config isn't loaded (e.g. tests, or config.yaml
@@ -206,12 +234,18 @@ def _apply_connection_to_runtime(
     replace the catalog metadata from the warehouse and rebuild retrieval
     indexes so leftover demo tables cannot linger. Startup re-apply keeps
     ``sync_schema=False`` to avoid wiping curated catalog edits on every boot.
+
+    Returns ``(status, revert_activation)``. ``revert_activation`` is True only
+    when the live URI/dialect were switched and then restored because catalog
+    sync failed — callers that tentatively flipped ``is_active`` must roll that
+    back so Text2SQL cannot see new-warehouse + old-catalog.
     """
     status = ConnectionRuntimeApplyStatus(
         catalog_sync_status="skipped",
         index_reload_status="skipped",
         message=None,
     )
+    revert_activation = False
     password = _decrypt(row.password_encrypted)
     token_password = _decrypt(row.token_password_encrypted)
     data_warehouse_config = build_data_warehouse_config(row, password=password, token_password=token_password)
@@ -221,6 +255,10 @@ def _apply_connection_to_runtime(
         from openchatbi.catalog.catalog_loader import reload_catalog_indexes, sync_catalog_from_data_warehouse
 
         cfg = openchatbi_config.get()
+        previous_dw_config = copy.deepcopy(getattr(cfg, "data_warehouse_config", None) or {})
+        previous_dialect = getattr(cfg, "dialect", None)
+        previous_store_config = copy.deepcopy(cfg.catalog_store.get_data_warehouse_config())
+
         cfg.data_warehouse_config = data_warehouse_config
         # Text2SQL / SQL graph compile dialect from config.dialect (see
         # openchatbi.text2sql.sql_graph); keep it in sync with the activated
@@ -240,23 +278,32 @@ def _apply_connection_to_runtime(
                     status.message = str(exc)
                     logger.warning("Catalog synced but index reload failed: %s", exc)
             else:
+                # Catalog loader restores the previous catalog snapshot; mirror
+                # that by putting URI/dialect back so Text2SQL stays consistent.
+                cfg.data_warehouse_config = previous_dw_config
+                cfg.dialect = previous_dialect
+                cfg.catalog_store.set_data_warehouse_config(previous_store_config)
                 status.catalog_sync_status = "failed"
                 status.message = (
-                    f"Activated connection {row.name} but catalog schema sync failed; "
-                    "previous catalog contents were restored when possible"
+                    f"Catalog schema sync failed for connection {row.name}; "
+                    "previous catalog contents were restored when possible and "
+                    "runtime warehouse URI/dialect were rolled back"
                 )
+                revert_activation = True
                 logger.warning(status.message)
     except Exception as exc:  # noqa: BLE001
         if sync_schema:
             status.catalog_sync_status = "failed"
             status.index_reload_status = "skipped"
             status.message = str(exc)
+        # Runtime may never have switched (e.g. config not loaded); keep
+        # is_active so startup can apply later — do not request activation revert.
         logger.warning("Could not apply data warehouse connection to the running config: %s", exc)
     # Drop cached agent graphs regardless: the persisted active connection changed,
     # so any stale graph must not be served even if the live-apply above failed
     # (e.g. openchatbi config isn't loaded in this process yet).
     invalidate_all_graphs()
-    return status
+    return status, revert_activation
 
 
 def apply_active_connection_on_startup(db: Session) -> None:
@@ -267,7 +314,7 @@ def apply_active_connection_on_startup(db: Session) -> None:
     if row is not None:
         # Catalog files were already synced on the last activate; only refresh
         # the live warehouse URI/dialect here.
-        _apply_connection_to_runtime(row, sync_schema=False)
+        _apply_connection_to_runtime(row, sync_schema=False)  # ignore revert flag
 
 
 def test_connection_payload(body: ConnectionIn) -> TestConnectionResult:
