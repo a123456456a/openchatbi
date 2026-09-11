@@ -12,6 +12,9 @@ export type SessionMeta = {
 export const SESSIONS_KEY = 'ocbi_sessions'
 export const SESSION_MESSAGES_KEY = 'ocbi_session_messages'
 
+/** Coalesce rapid stream-token writes so localStorage JSON work stays off the interaction path. */
+const MESSAGES_PERSIST_MS = 400
+
 type SessionMessagesMap = Record<string, ChatMessage[]>
 
 function load(): SessionMeta[] {
@@ -40,6 +43,48 @@ function loadMessages(): SessionMessagesMap {
 
 function saveMessages(map: SessionMessagesMap) {
   localStorage.setItem(SESSION_MESSAGES_KEY, JSON.stringify(map))
+}
+
+/** In-memory mirror of SESSION_MESSAGES_KEY — avoids parse/stringify on every stream event. */
+let messagesCache: SessionMessagesMap | null = null
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+
+function getMessagesMap(): SessionMessagesMap {
+  if (!messagesCache) messagesCache = loadMessages()
+  return messagesCache
+}
+
+function scheduleMessagesPersist() {
+  if (persistTimer != null) return
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    if (messagesCache) saveMessages(messagesCache)
+  }, MESSAGES_PERSIST_MS)
+}
+
+/** Flush pending transcript writes immediately (tests, unload, destructive edits). */
+export function flushSessionMessagesPersist() {
+  if (persistTimer != null) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  if (messagesCache) saveMessages(messagesCache)
+}
+
+/** Drop the in-memory transcript cache (tests). Next read reloads from localStorage. */
+export function resetSessionMessagesCache() {
+  if (persistTimer != null) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  messagesCache = null
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushSessionMessagesPersist)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushSessionMessagesPersist()
+  })
 }
 
 type SessionsState = {
@@ -76,14 +121,12 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   },
 
   getMessages(id) {
-    const map = loadMessages()
-    return map[id] ?? []
+    return getMessagesMap()[id] ?? []
   },
 
   setMessages(id, messages) {
-    const map = loadMessages()
-    map[id] = messages
-    saveMessages(map)
+    getMessagesMap()[id] = messages
+    scheduleMessagesPersist()
   },
 
   archive(id) {
@@ -103,10 +146,10 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     save(next)
     set({ sessions: next })
 
-    const map = loadMessages()
+    const map = getMessagesMap()
     if (id in map) {
       delete map[id]
-      saveMessages(map)
+      flushSessionMessagesPersist()
     }
   },
 }))

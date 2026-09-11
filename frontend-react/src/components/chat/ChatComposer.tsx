@@ -1,9 +1,30 @@
 import { ArrowUp, Plus, Square } from 'lucide-react'
-import { type KeyboardEvent } from 'react'
+import { type KeyboardEvent, useEffect, useEffectEvent, useRef, useState } from 'react'
 
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import ModelPicker from './ModelPicker'
+
+/** Enter multiline when probe exceeds one line by this much. */
+const ENTER_MULTILINE_SLACK_PX = 4
+/** Approx. chrome width (px) reserved by + / model / send in the single-row layout. */
+const SINGLE_ROW_CHROME_PX = {
+  plus: 36,
+  model: 100,
+  send: 36,
+  gaps: 14,
+  paddingX: 14,
+} as const
+
+function singleRowTextWidth(composerWidth: number, hasNewChat: boolean): number {
+  const chrome =
+    SINGLE_ROW_CHROME_PX.paddingX +
+    SINGLE_ROW_CHROME_PX.model +
+    SINGLE_ROW_CHROME_PX.send +
+    SINGLE_ROW_CHROME_PX.gaps +
+    (hasNewChat ? SINGLE_ROW_CHROME_PX.plus : 0)
+  return Math.max(80, composerWidth - chrome)
+}
 
 export default function ChatComposer({
   value,
@@ -21,12 +42,83 @@ export default function ChatComposer({
   streaming: boolean
   onSend: () => void
   onStop: () => void
-  /** Optional "+" affordance (single-row pill layout) to jump straight into a fresh session. */
+  /** Optional "+" affordance to jump straight into a fresh session. */
   onNewChat?: () => void
   autoFocus?: boolean
   placeholder?: string
   className?: string
 }) {
+  const composerRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const probeRef = useRef<HTMLTextAreaElement>(null)
+  const [multiline, setMultiline] = useState(false)
+  const multilineRef = useRef(false)
+
+  /**
+   * Cursor-like sticky multiline: once entered, stay until the input is cleared.
+   * Wrap detection uses a probe at single-row width (avoids layout oscillation).
+   * Layout reads (getComputedStyle / scrollHeight) run on rAF so they stay off the keystroke path.
+   */
+  const syncMultiline = useEffectEvent(() => {
+    if (value.length === 0) {
+      multilineRef.current = false
+      setMultiline(false)
+      return
+    }
+
+    if (multilineRef.current) return
+
+    if (value.includes('\n')) {
+      multilineRef.current = true
+      setMultiline(true)
+      return
+    }
+
+    const composer = composerRef.current
+    const probe = probeRef.current
+    const live = textareaRef.current
+    if (!composer || !probe || !live) return
+
+    const liveStyle = getComputedStyle(live)
+    probe.style.font = liveStyle.font
+    probe.style.letterSpacing = liveStyle.letterSpacing
+    probe.style.lineHeight = liveStyle.lineHeight
+    probe.style.padding = liveStyle.padding
+    probe.style.border = liveStyle.border
+    probe.style.boxSizing = liveStyle.boxSizing
+    probe.style.width = `${singleRowTextWidth(composer.clientWidth, Boolean(onNewChat))}px`
+    probe.value = value
+
+    const lineHeight = Number.parseFloat(liveStyle.lineHeight) || 24
+    const paddingY =
+      (Number.parseFloat(liveStyle.paddingTop) || 0) + (Number.parseFloat(liveStyle.paddingBottom) || 0)
+    const oneLineHeight = lineHeight + paddingY
+    if (probe.scrollHeight > oneLineHeight + ENTER_MULTILINE_SLACK_PX) {
+      multilineRef.current = true
+      setMultiline(true)
+    }
+  })
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => syncMultiline())
+    return () => cancelAnimationFrame(id)
+  }, [value, onNewChat])
+
+  useEffect(() => {
+    const composer = composerRef.current
+    if (!composer || typeof ResizeObserver === 'undefined') return
+    let raf = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => syncMultiline())
+    })
+    observer.observe(composer)
+    return () => {
+      cancelAnimationFrame(raf)
+      observer.disconnect()
+    }
+  }, [])
+
   function handleSend() {
     if (!value.trim() || streaming) return
     onSend()
@@ -39,26 +131,73 @@ export default function ChatComposer({
     }
   }
 
+  const canSend = Boolean(value.trim()) && !streaming
+
+  const newChatButton = onNewChat ? (
+    <button
+      type="button"
+      aria-label="新建会话"
+      title="新建会话"
+      onClick={onNewChat}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-muted)] text-[var(--color-muted-foreground)] transition-colors duration-150 hover:bg-[var(--color-border)] hover:text-[var(--color-foreground)]"
+    >
+      <Plus size={16} />
+    </button>
+  ) : null
+
+  const actionButton = streaming ? (
+    <button
+      type="button"
+      aria-label="停止生成"
+      title="停止生成"
+      onClick={onStop}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-foreground)] text-[var(--color-background)] transition-opacity duration-150 hover:opacity-90 active:scale-95"
+    >
+      <Square size={12} fill="currentColor" />
+    </button>
+  ) : (
+    <button
+      type="button"
+      aria-label="发送"
+      title="发送 (Enter) · 换行 (Shift+Enter)"
+      disabled={!canSend}
+      onClick={handleSend}
+      className={cn(
+        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-opacity duration-150 active:enabled:scale-95',
+        canSend
+          ? 'bg-[var(--color-foreground)] text-[var(--color-background)] hover:opacity-90'
+          : 'cursor-not-allowed bg-[var(--color-muted)] text-[var(--color-muted-foreground)] opacity-50',
+      )}
+    >
+      <ArrowUp size={16} />
+    </button>
+  )
+
   return (
     <div
+      ref={composerRef}
       className={cn(
-        'flex items-end gap-1 rounded-3xl border border-[var(--color-border)] bg-[var(--color-card)] p-1.5 pl-2 shadow-[var(--shadow-card)] transition-all duration-200 focus-within:border-[var(--color-primary)]/50 focus-within:shadow-[var(--shadow-float)]',
+        'relative border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-card)] transition-[border-radius] duration-200',
+        multiline
+          ? 'flex flex-col gap-2 rounded-2xl px-3 pb-2.5 pt-3'
+          : 'flex items-center gap-1.5 rounded-full p-1.5 pl-2',
         className,
       )}
     >
-      {onNewChat && (
-        <button
-          type="button"
-          aria-label="新建会话"
-          title="新建会话"
-          onClick={onNewChat}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--color-muted-foreground)] transition-colors duration-150 hover:bg-[var(--color-muted)] hover:text-[var(--color-primary)]"
-        >
-          <Plus size={18} />
-        </button>
-      )}
+      {/* Off-screen probe: measures wrap at single-row width so layout flips stay stable. */}
+      <textarea
+        ref={probeRef}
+        aria-hidden
+        tabIndex={-1}
+        readOnly
+        rows={1}
+        className="pointer-events-none absolute top-0 left-0 -z-10 h-auto max-h-none min-h-0 overflow-hidden whitespace-pre-wrap break-words opacity-0"
+      />
+
+      {!multiline && newChatButton}
 
       <Textarea
+        ref={textareaRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
@@ -66,33 +205,25 @@ export default function ChatComposer({
         autoFocus={autoFocus}
         placeholder={placeholder}
         disabled={streaming}
-        className="max-h-40 min-h-9 flex-1 resize-none border-none bg-transparent px-1.5 py-1.5 text-[15px] shadow-none focus-visible:ring-0 dark:bg-transparent"
+        className={cn(
+          'max-h-48 min-h-8 resize-none !border-none bg-transparent px-1.5 py-1.5 text-[15px] leading-6 !shadow-none outline-none focus-visible:!border-none focus-visible:!outline-none focus-visible:!ring-0 dark:bg-transparent',
+          multiline ? 'w-full' : 'flex-1',
+        )}
       />
 
-      <ModelPicker />
-
-      {streaming ? (
-        <button
-          type="button"
-          aria-label="停止生成"
-          title="停止生成"
-          onClick={onStop}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-foreground)] text-white shadow-sm transition-all duration-150 hover:opacity-90 active:scale-95"
-        >
-          <Square size={14} fill="currentColor" />
-        </button>
+      {multiline ? (
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1">
+            {newChatButton}
+            <ModelPicker />
+          </div>
+          {actionButton}
+        </div>
       ) : (
-        <button
-          type="button"
-          aria-label="发送"
-          title="发送 (Enter) · 换行 (Shift+Enter)"
-          disabled={!value.trim()}
-          onClick={handleSend}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-all duration-150 enabled:hover:scale-105 enabled:hover:shadow-[var(--shadow-glow)] disabled:cursor-not-allowed disabled:opacity-30 active:enabled:scale-95"
-          style={{ background: value.trim() ? 'var(--gradient-brand)' : 'var(--color-foreground)' }}
-        >
-          <ArrowUp size={18} />
-        </button>
+        <>
+          <ModelPicker />
+          {actionButton}
+        </>
       )}
     </div>
   )

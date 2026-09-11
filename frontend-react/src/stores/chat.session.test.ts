@@ -7,11 +7,12 @@ vi.mock('@/api/chat', () => ({
 import { streamChat } from '@/api/chat'
 import type { StreamEvent } from '@/types/stream'
 import { useChatStore } from './chat'
-import { useSessionsStore } from './sessions'
+import { resetSessionMessagesCache, useSessionsStore } from './sessions'
 
 describe('useChatStore session switching', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetSessionMessagesCache()
     useSessionsStore.setState({ sessions: [] })
     useChatStore.setState({ sessionId: null, messages: [], streaming: false, lastInterrupt: null, error: null })
     vi.mocked(streamChat).mockReset()

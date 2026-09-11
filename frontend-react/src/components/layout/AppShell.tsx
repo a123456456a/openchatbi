@@ -9,7 +9,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -60,12 +60,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  // Keep the search field responsive; defer filtering/re-layout of the session list (INP).
+  const deferredQuery = useDeferredValue(query)
 
-  const normalizedQuery = query.trim().toLowerCase()
+  const normalizedQuery = deferredQuery.trim().toLowerCase()
   const matchesQuery = (s: SessionMeta) => !normalizedQuery || s.title.toLowerCase().includes(normalizedQuery)
 
-  const activeSessions = sessions.filter((s) => !s.archived && matchesQuery(s))
-  const archivedSessions = sessions.filter((s) => s.archived && matchesQuery(s))
+  const activeSessions = useMemo(
+    () => sessions.filter((s) => !s.archived && matchesQuery(s)),
+    // matchesQuery closes over normalizedQuery
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessions, normalizedQuery],
+  )
+  const archivedSessions = useMemo(
+    () => sessions.filter((s) => s.archived && matchesQuery(s)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessions, normalizedQuery],
+  )
   const groupedActiveSessions = useMemo(() => groupByDay(activeSessions), [activeSessions])
 
   function newChat() {

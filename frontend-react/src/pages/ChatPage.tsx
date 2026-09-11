@@ -15,20 +15,135 @@ import { useSettingsStore } from '@/stores/settings'
 /** Must match `MISSING_LLM_SETTINGS_DETAIL` in `backend/chat/routes.py`. */
 const MISSING_LLM_SETTINGS_DETAIL = '请先在设置中配置模型'
 
+function ChatErrorBanner() {
+  const error = useChatStore((s) => s.error)
+  const openSettings = useSettingsStore((s) => s.openSettings)
+  if (!error) return null
+
+  return (
+    <div className="px-6 pb-2">
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+        {error === MISSING_LLM_SETTINGS_DETAIL && (
+          <AlertAction>
+            <Button size="sm" variant="outline" onClick={openSettings}>
+              去设置
+            </Button>
+          </AlertAction>
+        )}
+      </Alert>
+    </div>
+  )
+}
+
+/** Owns the messages subscription so stream paints do not re-render the composer. */
+function ChatTranscript() {
+  const messages = useChatStore((s) => s.messages)
+  return <MessageList messages={messages} />
+}
+
+function ChatStreamingBadge() {
+  const streaming = useChatStore((s) => s.streaming)
+  if (!streaming) return null
+  return (
+    <div className="shrink-0 rounded-full bg-[var(--color-muted)] px-3 py-1 text-xs font-medium text-[var(--color-primary)]">
+      生成中…
+    </div>
+  )
+}
+
+/**
+ * Composer input lives here (not in ChatPage) so each keystroke only re-renders this subtree —
+ * not the markdown-heavy transcript. That is the main typing INP win once messages exist.
+ */
+function ActiveChatComposer({ sessionId }: { sessionId: string }) {
+  const navigate = useNavigate()
+  const ensure = useSessionsStore((s) => s.ensure)
+  const streaming = useChatStore((s) => s.streaming)
+  const send = useChatStore((s) => s.send)
+  const stop = useChatStore((s) => s.stop)
+  const [input, setInput] = useState('')
+
+  useEffect(() => {
+    setInput('')
+  }, [sessionId])
+
+  function onSend() {
+    if (!input.trim()) return
+    const text = input
+    setInput('')
+    void send(sessionId, text)
+  }
+
+  function newChat() {
+    const id = crypto.randomUUID()
+    ensure(id)
+    navigate(`/chat/${id}`)
+  }
+
+  return (
+    <div className="border-t border-[var(--color-border)] bg-[var(--color-card)] p-4">
+      <div className="mx-auto max-w-3xl">
+        <ChatComposer
+          value={input}
+          onChange={setInput}
+          streaming={streaming}
+          onSend={onSend}
+          onStop={stop}
+          onNewChat={newChat}
+        />
+      </div>
+    </div>
+  )
+}
+
+function WelcomePane({ sessionId }: { sessionId: string }) {
+  const streaming = useChatStore((s) => s.streaming)
+  const send = useChatStore((s) => s.send)
+  const stop = useChatStore((s) => s.stop)
+  const error = useChatStore((s) => s.error)
+  const openSettings = useSettingsStore((s) => s.openSettings)
+  const [input, setInput] = useState('')
+
+  useEffect(() => {
+    setInput('')
+  }, [sessionId])
+
+  function onSend() {
+    if (!input.trim()) return
+    const text = input
+    setInput('')
+    void send(sessionId, text)
+  }
+
+  return (
+    <>
+      <ChatWelcome value={input} onChange={setInput} streaming={streaming} onSend={onSend} onStop={stop} />
+      {error && (
+        <div className="px-6 pb-6">
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+            {error === MISSING_LLM_SETTINGS_DETAIL && (
+              <AlertAction>
+                <Button size="sm" variant="outline" onClick={openSettings}>
+                  去设置
+                </Button>
+              </AlertAction>
+            )}
+          </Alert>
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function ChatPage() {
   const navigate = useNavigate()
   const { sessionId } = useParams()
   const ensure = useSessionsStore((s) => s.ensure)
-
-  const messages = useChatStore((s) => s.messages)
-  const streaming = useChatStore((s) => s.streaming)
-  const error = useChatStore((s) => s.error)
-  const send = useChatStore((s) => s.send)
-  const stop = useChatStore((s) => s.stop)
   const loadSession = useChatStore((s) => s.loadSession)
-  const openSettings = useSettingsStore((s) => s.openSettings)
-
-  const [input, setInput] = useState('')
+  // Boolean selector: only re-render when empty ↔ non-empty flips, not on every stream token.
+  const hasMessages = useChatStore((s) => s.messages.length > 0)
 
   useEffect(() => {
     if (!sessionId) {
@@ -41,91 +156,24 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (sessionId) loadSession(sessionId)
-    // Composer draft is scoped to the page, not any one session — clear it on every
-    // session switch (sidebar click, "+" new chat, …) so text never leaks across chats.
-    setInput('')
   }, [sessionId, loadSession])
-
-  function onSend() {
-    if (!sessionId || !input.trim()) return
-    const text = input
-    setInput('')
-    void send(sessionId, text)
-  }
-
-  function newChat() {
-    const id = crypto.randomUUID()
-    ensure(id)
-    navigate(`/chat/${id}`)
-  }
-
-  const hasMessages = messages.length > 0
 
   return (
     <AppShell>
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--color-background)]">
-        {hasMessages && (
-          <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-card)]/90 px-6 py-3 backdrop-blur-sm">
-            <div className="min-w-0 text-sm font-semibold text-[var(--color-foreground)]">当前会话</div>
-            {streaming && (
-              <div className="shrink-0 rounded-full bg-[var(--color-muted)] px-3 py-1 text-xs font-medium text-[var(--color-primary)]">
-                生成中…
-              </div>
-            )}
-          </header>
-        )}
-
-        {hasMessages ? (
+        {hasMessages && sessionId ? (
           <>
-            <MessageList messages={messages} />
-
-            {error && (
-              <div className="px-6 pb-2">
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                  {error === MISSING_LLM_SETTINGS_DETAIL && (
-                    <AlertAction>
-                      <Button size="sm" variant="outline" onClick={openSettings}>
-                        去设置
-                      </Button>
-                    </AlertAction>
-                  )}
-                </Alert>
-              </div>
-            )}
-
-            <div className="border-t border-[var(--color-border)] bg-[var(--color-card)] p-4">
-              <div className="mx-auto max-w-3xl">
-                <ChatComposer
-                  value={input}
-                  onChange={setInput}
-                  streaming={streaming}
-                  onSend={onSend}
-                  onStop={stop}
-                  onNewChat={newChat}
-                />
-              </div>
-            </div>
+            <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-card)]/90 px-6 py-3 backdrop-blur-sm">
+              <div className="min-w-0 text-sm font-semibold text-[var(--color-foreground)]">当前会话</div>
+              <ChatStreamingBadge />
+            </header>
+            <ChatTranscript />
+            <ChatErrorBanner />
+            <ActiveChatComposer sessionId={sessionId} />
           </>
-        ) : (
-          <>
-            <ChatWelcome value={input} onChange={setInput} streaming={streaming} onSend={onSend} onStop={stop} />
-            {error && (
-              <div className="px-6 pb-6">
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                  {error === MISSING_LLM_SETTINGS_DETAIL && (
-                    <AlertAction>
-                      <Button size="sm" variant="outline" onClick={openSettings}>
-                        去设置
-                      </Button>
-                    </AlertAction>
-                  )}
-                </Alert>
-              </div>
-            )}
-          </>
-        )}
+        ) : sessionId ? (
+          <WelcomePane sessionId={sessionId} />
+        ) : null}
       </div>
       <InterruptDialog />
     </AppShell>

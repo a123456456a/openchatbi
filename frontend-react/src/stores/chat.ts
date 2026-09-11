@@ -27,8 +27,29 @@ type ChatState = {
 }
 
 let abortController: AbortController | null = null
+/** Coalesce in-place stream mutations into at most one React commit per animation frame. */
+let streamPaintRaf: number | null = null
 
-export const useChatStore = create<ChatState>((set, get) => ({
+function cancelStreamPaint() {
+  if (streamPaintRaf == null) return
+  cancelAnimationFrame(streamPaintRaf)
+  streamPaintRaf = null
+}
+
+export const useChatStore = create<ChatState>((set, get) => {
+  const paintMessages = () => {
+    set((state) => ({ messages: [...state.messages] }))
+  }
+
+  const scheduleStreamPaint = (isActive: () => boolean) => {
+    if (streamPaintRaf != null) return
+    streamPaintRaf = requestAnimationFrame(() => {
+      streamPaintRaf = null
+      if (isActive()) paintMessages()
+    })
+  }
+
+  return {
   sessionId: null,
   messages: [],
   streaming: false,
@@ -38,6 +59,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadSession(sessionId) {
     if (get().sessionId === sessionId) return
     if (get().streaming) get().stop()
+    cancelStreamPaint()
     set({
       sessionId,
       messages: useSessionsStore.getState().getMessages(sessionId),
@@ -88,6 +110,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     sessions.setMessages(sessionId, localMessages)
 
     if (isActive()) {
+      cancelStreamPaint()
       set({ messages: localMessages, streaming: true, error: null, lastInterrupt: null })
     }
     abortController = new AbortController()
@@ -107,7 +130,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       applyStreamEvent(assistantMsg, event)
       sessions.setMessages(sessionId, localMessages)
-      if (isActive()) set((state) => ({ messages: [...state.messages] }))
+      if (isActive()) scheduleStreamPaint(isActive)
     }
 
     try {
@@ -137,7 +160,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } finally {
       assistantMsg.streaming = false
       sessions.setMessages(sessionId, localMessages)
-      if (isActive()) set((state) => ({ streaming: false, messages: [...state.messages] }))
+      if (isActive()) {
+        cancelStreamPaint()
+        set({ streaming: false, messages: [...get().messages] })
+      }
       if (abortController === controller) abortController = null
     }
   },
@@ -145,6 +171,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   stop() {
     abortController?.abort()
     abortController = null
+    cancelStreamPaint()
     set({ streaming: false })
   },
-}))
+  }
+})

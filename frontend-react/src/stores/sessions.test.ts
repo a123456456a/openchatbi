@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { ChatMessage } from '@/types/stream'
-import { SESSION_MESSAGES_KEY, SESSIONS_KEY, useSessionsStore } from './sessions'
+import {
+  flushSessionMessagesPersist,
+  resetSessionMessagesCache,
+  SESSION_MESSAGES_KEY,
+  SESSIONS_KEY,
+  useSessionsStore,
+} from './sessions'
 
 function msg(content: string): ChatMessage {
   return { id: content, role: 'user', content, thinking: '', steps: [] }
@@ -10,6 +16,7 @@ function msg(content: string): ChatMessage {
 describe('useSessionsStore', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetSessionMessagesCache()
     useSessionsStore.setState({ sessions: [] })
   })
 
@@ -34,6 +41,7 @@ describe('useSessionsStore', () => {
 
   it('survives a reload by reading back from localStorage', () => {
     useSessionsStore.getState().setMessages('s1', [msg('persisted')])
+    flushSessionMessagesPersist()
     expect(JSON.parse(localStorage.getItem(SESSION_MESSAGES_KEY) ?? '{}')).toEqual({
       s1: [msg('persisted')],
     })
