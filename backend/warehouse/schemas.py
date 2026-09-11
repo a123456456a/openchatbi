@@ -92,3 +92,13 @@ class ConnectionUpdate(BaseModel):
 class TestConnectionResult(BaseModel):
     ok: bool
     detail: str
+
+
+class WarehouseStatusOut(BaseModel):
+    """Authenticated warehouse/runtime status for chat UI (demo banner / fail-closed hints)."""
+
+    has_active_connection: bool
+    active_connection_id: str | None = None
+    demo_allowed: bool
+    demo_mode: bool
+

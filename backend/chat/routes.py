@@ -17,6 +17,7 @@ from backend.auth.deps import get_current_user
 from backend.auth.models import User, UserLlmConfig
 from backend.chat.schemas import AbortInterruptResponse, ChatStreamRequest
 from backend.db import get_db
+from backend.warehouse.gate import require_active_warehouse_or_demo
 from backend.llm.crypto import decrypt_api_key
 from backend.llm.factory import build_chat_model
 from backend.llm.graph_cache import get_or_build_graph
@@ -125,6 +126,8 @@ async def chat_stream(
     """
     user_id = current_user.id
     session_id = req.session_id or "default"
+    # Fail-closed: do not silently run Text2SQL against config.yaml demo SQLite.
+    require_active_warehouse_or_demo(db)
     run_config = build_run_config(user_id=user_id, session_id=session_id)
 
     provider, llm, config_hash = resolve_user_chat_llm(db, current_user)
@@ -186,6 +189,7 @@ async def abort_chat_interrupt(
 ) -> AbortInterruptResponse:
     """Drop a paused LangGraph thread so the next message starts a fresh turn."""
     user_id = current_user.id
+    require_active_warehouse_or_demo(db)
     run_config = build_run_config(user_id=user_id, session_id=session_id)
 
     provider, llm, config_hash = resolve_user_chat_llm(db, current_user)

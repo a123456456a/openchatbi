@@ -42,6 +42,19 @@ def insecure_defaults_allowed(allow_insecure_defaults: bool, app_env: str) -> bo
     return False
 
 
+def demo_warehouse_allowed(allow_demo_warehouse: bool, app_env: str) -> bool:
+    """Whether chat may run against the config.yaml demo warehouse without an activated connection.
+
+    Production default is fail-closed: require an admin-activated warehouse.
+    Local exemption: ALLOW_DEMO_WAREHOUSE=true or APP_ENV in development|dev|local|test.
+    """
+    if allow_demo_warehouse:
+        return True
+    if (app_env or "").strip().lower() in _DEV_APP_ENVS:
+        return True
+    return False
+
+
 class Settings(BaseSettings):
     jwt_secret: str = Field(default="dev-only-change-me", alias="JWT_SECRET")
     llm_settings_secret: str | None = Field(default=None, alias="LLM_SETTINGS_SECRET")
@@ -51,7 +64,10 @@ class Settings(BaseSettings):
     cors_origins: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
     # Local demo only — never enable in production.
     allow_insecure_defaults: bool = Field(default=False, alias="ALLOW_INSECURE_DEFAULTS")
-    # Use APP_ENV=development|dev|local|test to exempt JWT demo secret without the flag.
+    # Allow chat/Text2SQL against config.yaml demo SQLite when no warehouse is activated.
+    # Never enable in production; prefer activating a real connection in the admin UI.
+    allow_demo_warehouse: bool = Field(default=False, alias="ALLOW_DEMO_WAREHOUSE")
+    # Use APP_ENV=development|dev|local|test to exempt JWT demo secret / demo warehouse without flags.
     app_env: str = Field(default="production", alias="APP_ENV")
 
     @property

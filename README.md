@@ -129,6 +129,12 @@ runs **refuse to start** with that secret. For local demo you must either set a 
 `JWT_SECRET`, or explicitly opt in with `ALLOW_INSECURE_DEFAULTS=true` or
 `APP_ENV=development` (never enable those in production).
 
+**No silent demo warehouse:** chat / Text2SQL **fail closed** unless an admin has activated a
+data warehouse connection in `/admin/databases`. Without an active connection the API returns
+`400` with `请先在管理端激活数仓` instead of silently querying `example/tracking_orders.sqlite`.
+Local demo only: set `ALLOW_DEMO_WAREHOUSE=true` or `APP_ENV=development` (same exemption set as
+JWT); the UI then shows a visible 「演示数据」 banner so it cannot be mistaken for production.
+
 首次打开登录页可点「首次初始化」创建首个 `admin`，或调用 `POST /api/auth/bootstrap`。
 
 角色：`admin` / `analyst` / `viewer`。详见 `docs/superpowers/specs/2026-09-08-vue-oauth-jwt-design.md`。

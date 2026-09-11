@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useSessionsStore, type SessionMeta } from '@/stores/sessions'
+import DemoWarehouseBanner from '@/components/common/DemoWarehouseBanner'
 import SettingsDialog from './SettingsDialog'
 import SidebarFooter from './SidebarFooter'
 
@@ -99,6 +100,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--color-background)]">
+      <DemoWarehouseBanner />
       <aside className="flex w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-card)]">
         <div className="border-b border-[var(--color-border)] p-4">
           <div className="mb-4 flex items-center gap-2.5">

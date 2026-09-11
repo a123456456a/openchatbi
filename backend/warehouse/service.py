@@ -62,6 +62,11 @@ def list_connections(db: Session) -> list[DataWarehouseConnection]:
     return db.query(DataWarehouseConnection).order_by(DataWarehouseConnection.created_at.asc()).all()
 
 
+def get_active_connection(db: Session) -> DataWarehouseConnection | None:
+    """Return the currently activated warehouse connection, if any."""
+    return db.query(DataWarehouseConnection).filter(DataWarehouseConnection.is_active.is_(True)).first()
+
+
 def get_connection(db: Session, connection_id: str) -> DataWarehouseConnection:
     row = db.get(DataWarehouseConnection, connection_id)
     if row is None:
@@ -310,7 +315,7 @@ def apply_active_connection_on_startup(db: Session) -> None:
     """Called once at app startup: if an admin has previously activated a
     connection, make sure the running openchatbi config reflects it (rather
     than whatever ``config.yaml`` shipped with)."""
-    row = db.query(DataWarehouseConnection).filter(DataWarehouseConnection.is_active.is_(True)).first()
+    row = get_active_connection(db)
     if row is not None:
         # Catalog files were already synced on the last activate; only refresh
         # the live warehouse URI/dialect here.
@@ -383,6 +388,7 @@ __all__ = [
     "DecryptFailed",
     "dialect_catalog_items",
     "list_connections",
+    "get_active_connection",
     "get_connection",
     "create_connection",
     "update_connection",
