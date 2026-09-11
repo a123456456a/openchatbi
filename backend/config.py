@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     allow_demo_warehouse: bool = Field(default=False, alias="ALLOW_DEMO_WAREHOUSE")
     # Use APP_ENV=development|dev|local|test to exempt JWT demo secret / demo warehouse without flags.
     app_env: str = Field(default="production", alias="APP_ENV")
+    # LangGraph checkpointer: sqlite (default, shared file) or postgres (optional extra).
+    checkpointer_backend: str = Field(default="sqlite", alias="CHECKPOINTER_BACKEND")
+    checkpointer_sqlite_path: str = Field(default="./data/checkpoints.db", alias="CHECKPOINTER_SQLITE_PATH")
+    checkpointer_postgres_url: str | None = Field(default=None, alias="CHECKPOINTER_POSTGRES_URL")
+    # Shared cancel ledger for multi-worker 「停止生成」(same filesystem).
+    run_cancel_sqlite_path: str = Field(default="./data/run_cancels.db", alias="RUN_CANCEL_SQLITE_PATH")
 
     @property
     def cors_origin_list(self) -> list[str]:

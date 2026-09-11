@@ -15,3 +15,11 @@ class ChatStreamRequest(BaseModel):
 class AbortInterruptResponse(BaseModel):
     aborted: bool
     had_interrupt: bool
+
+
+class CancelRunResponse(BaseModel):
+    """Result of server-side 「停止生成」 cancel."""
+
+    cancelled: bool
+    had_running_run: bool
+    thread_cleared: bool

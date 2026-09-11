@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import { streamChat } from '../api/chat'
+import { cancelChatRun, streamChat } from '../api/chat'
 import type { ChatMessage, ChatStep, StreamEvent } from '../types/stream'
 import { useSettingsStore } from './settings'
 import { useSessionsStore } from './sessions'
@@ -19,9 +19,15 @@ export const useChatStore = defineStore('chat', () => {
   let abort: AbortController | null = null
 
   function stop() {
+    const sid = sessionId.value
     abort?.abort()
     abort = null
     streaming.value = false
+    if (sid) {
+      void cancelChatRun(sid).catch(() => {
+        /* best-effort server cancel; client already aborted the stream */
+      })
+    }
   }
 
   function loadSession(id: string) {

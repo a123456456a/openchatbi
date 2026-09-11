@@ -210,6 +210,7 @@ __marimo__/
 openchatbi/config.yaml
 memory.db
 checkpoints.*
+run_cancels.*
 data
 hf_model
 timeseries_forecasting/hf_model

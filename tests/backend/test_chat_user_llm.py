@@ -256,6 +256,7 @@ def test_graph_builds_under_llm_override(client):
         patch("backend.chat.routes.build_chat_model", return_value=fake_llm),
         patch("backend.llm.graph_cache.build_agent_graph_async", new=fake_build),
         patch("backend.llm.graph_cache.get_async_memory_store", new=AsyncMock(return_value=None)),
+        patch("backend.llm.graph_cache.get_async_checkpointer", new=AsyncMock(return_value=object())),
         patch("backend.llm.graph_cache.config") as cfg,
         patch("backend.chat.routes.AgentStreamProcessor") as proc_cls,
         patch("backend.chat.routes.extract_final_answer", return_value="hello"),

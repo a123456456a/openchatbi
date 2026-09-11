@@ -27,6 +27,12 @@ export type AbortInterruptResponse = {
   had_interrupt: boolean
 }
 
+export type CancelRunResponse = {
+  cancelled: boolean
+  had_running_run: boolean
+  thread_cleared: boolean
+}
+
 export async function abortChatInterrupt(sessionId: string): Promise<AbortInterruptResponse> {
   const auth = useAuthStore()
 
@@ -57,6 +63,38 @@ export async function abortChatInterrupt(sessionId: string): Promise<AbortInterr
   }
 
   return (await res.json()) as AbortInterruptResponse
+}
+
+export async function cancelChatRun(sessionId: string): Promise<CancelRunResponse> {
+  const auth = useAuthStore()
+
+  const attempt = async () => {
+    const headers = await authHeaders()
+    return fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/cancel`, {
+      method: 'POST',
+      headers,
+    })
+  }
+
+  let res = await attempt()
+  if (res.status === 401) {
+    const ok = await auth.refresh()
+    if (!ok) throw new Error('未登录或登录已过期')
+    res = await attempt()
+  }
+
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try {
+      const j = (await res.json()) as { detail?: string }
+      if (typeof j.detail === 'string') detail = j.detail
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail)
+  }
+
+  return (await res.json()) as CancelRunResponse
 }
 
 export async function streamChat(
