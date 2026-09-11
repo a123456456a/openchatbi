@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChatStep } from '@/types/stream'
 import {
   assistantCopyText,
+  formatToolBody,
   processSteps,
   stepTitle,
   toolBodyText,
@@ -63,5 +64,57 @@ describe('chatSteps', () => {
       "最终答案\n\n[{'total': 1234}]\n\nfull error payload",
     )
     expect(assistantCopyText('', [mixed[4]])).toBe("[{'total': 1234}]")
+  })
+
+  describe('formatToolBody', () => {
+    it('pretty-prints and fences JSON-object tool results as a code block', () => {
+      const step: ChatStep = {
+        id: 't',
+        kind: 'tool_result',
+        level: 0,
+        label: 'main',
+        text: 'preview',
+        data: { tool: 'search_schema', result: '{"candidates":[{"table":"orders","match_reason":"x_y"}]}' },
+      }
+      const body = formatToolBody(step)
+      expect(body.startsWith('```json\n')).toBe(true)
+      expect(body.endsWith('\n```')).toBe(true)
+      // Pretty-printed (multi-line), and underscores in field values are preserved verbatim
+      // instead of being interpreted as markdown emphasis.
+      expect(body).toContain('"match_reason": "x_y"')
+      expect(body.split('\n').length).toBeGreaterThan(3)
+    })
+
+    it('still fences JSON-looking payloads that are not strictly valid JSON (e.g. Python repr)', () => {
+      const body = formatToolBody(mixed[4])
+      expect(body).toBe("```json\n[{'total': 1234}]\n```")
+    })
+
+    it('leaves non-JSON tool text (e.g. business knowledge prose) as plain markdown', () => {
+      const step: ChatStep = {
+        id: 't',
+        kind: 'tool_result',
+        level: 0,
+        label: 'main',
+        text: 'preview',
+        data: { tool: 'search_knowledge', result: '# Business glossary\n- GMV: gross merchandise value' },
+      }
+      expect(formatToolBody(step)).toBe('# Business glossary\n- GMV: gross merchandise value')
+    })
+
+    it('truncates very large tool results so a single payload cannot bloat the page', () => {
+      const huge = JSON.stringify({ candidates: Array.from({ length: 500 }, (_, i) => ({ table: `t${i}` })) })
+      const step: ChatStep = {
+        id: 't',
+        kind: 'tool_result',
+        level: 0,
+        label: 'main',
+        text: 'preview',
+        data: { tool: 'search_schema', result: huge },
+      }
+      const body = formatToolBody(step)
+      expect(body.length).toBeLessThan(huge.length)
+      expect(body).toContain('已截断')
+    })
   })
 })

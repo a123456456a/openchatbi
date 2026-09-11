@@ -1,14 +1,14 @@
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 
-import { isToolStep, stepTitle, toolBodyText } from '@/lib/chatSteps'
+import { formatToolBody, isToolStep, stepTitle } from '@/lib/chatSteps'
 import type { ChatStep } from '@/types/stream'
 import Markdown from '../common/Markdown'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 function StepItem({ step, defaultOpen }: { step: ChatStep; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
-  const body = isToolStep(step) ? toolBodyText(step) : step.text
+  const body = isToolStep(step) ? formatToolBody(step) : step.text
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="rounded-xl border border-slate-100 bg-slate-50/70">

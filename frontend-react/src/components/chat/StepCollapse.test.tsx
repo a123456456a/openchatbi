@@ -26,7 +26,7 @@ describe('StepCollapse', () => {
     expect(screen.getByRole('button', { name: /生成 SQL/ })).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('keeps tool steps collapsed when defaultOpen is false', () => {
+  it('keeps tool steps collapsed when defaultOpen is false, without rendering the body', () => {
     render(
       <StepCollapse
         defaultOpen={false}
@@ -41,5 +41,8 @@ describe('StepCollapse', () => {
       />,
     )
     expect(screen.getByRole('button', { name: /text2sql/ })).toHaveAttribute('aria-expanded', 'false')
+    // Collapsed content isn't mounted at all, so the raw payload never hits the DOM (or the
+    // markdown pipeline) until the user opens the panel.
+    expect(screen.queryByText("[{'total': 1234}]")).not.toBeInTheDocument()
   })
 })

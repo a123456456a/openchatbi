@@ -64,7 +64,9 @@ export function fileResultSteps(steps: ChatStep[]): ChatStep[] {
   return steps.filter((s) => isToolStep(s) && isFileResultStep(s))
 }
 
-/** Non-file tool results — rendered inline as markdown text, and again in the collapsed panel below. */
+/** Non-file tool results — shown only in the collapsed "工具结果" panel below the answer body,
+ * never dumped directly into the main answer (raw tool payloads are often large JSON that is
+ * both unreadable as prose and expensive to run through the full markdown pipeline). */
 export function nonFileToolSteps(steps: ChatStep[]): ChatStep[] {
   return steps.filter((s) => isToolStep(s) && !isFileResultStep(s))
 }
@@ -76,6 +78,48 @@ export function toolBodyText(step: ChatStep): string {
   const error = step.data?.error
   if (typeof error === 'string' && error) return error
   return step.text
+}
+
+/** Upper bound on how much raw tool-result text is ever rendered. Structured schema/knowledge
+ * lookups can return several KB of nested JSON; without a cap that text gets fully parsed by
+ * the markdown pipeline (and painted into the DOM) on every render, which is what causes the
+ * page to stutter once a tool returns a large payload. */
+const MAX_TOOL_BODY_LENGTH = 4000
+
+function truncateBody(text: string): string {
+  if (text.length <= MAX_TOOL_BODY_LENGTH) return text
+  return `${text.slice(0, MAX_TOOL_BODY_LENGTH)}\n…（已截断，完整内容共 ${text.length} 字符，可点击“复制回答”获取全文）`
+}
+
+/** `true` for payloads that look like a JSON object/array (as opposed to plain prose text such
+ * as business-knowledge glossary entries, which should keep rendering as normal markdown). */
+function looksLikeJson(text: string): boolean {
+  return /^[[{]/.test(text)
+}
+
+/**
+ * Render a tool result body safely: JSON-shaped payloads (the common case for schema/knowledge
+ * lookup tools) are pretty-printed and fenced as a code block instead of being parsed as
+ * markdown prose — this avoids both the unreadable/garbled output from markdown mis-interpreting
+ * `_`/`*` inside field names, and the performance cost of running the full markdown pipeline
+ * (linkify, emphasis, texmath, …) over a long, single-line JSON string. Non-JSON text results
+ * still render as regular markdown so intentionally formatted content (e.g. business knowledge)
+ * keeps its formatting.
+ */
+export function formatToolBody(step: ChatStep): string {
+  const raw = toolBodyText(step)
+  if (!raw) return raw
+  const trimmed = raw.trim()
+  if (!looksLikeJson(trimmed)) return truncateBody(raw)
+
+  let pretty = trimmed
+  try {
+    pretty = JSON.stringify(JSON.parse(trimmed), null, 2)
+  } catch {
+    // Not strictly valid JSON (e.g. a Python dict/list repr with single quotes) — still fence
+    // it as a code block below so it renders as monospaced data rather than markdown prose.
+  }
+  return '```json\n' + truncateBody(pretty) + '\n```'
 }
 
 export function toolStepTitle(step: ChatStep): string {
