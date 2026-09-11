@@ -209,8 +209,11 @@ def test_activate_applies_to_running_openchatbi_config(client):
     a = client.post("/api/admin/database-connections", headers=_auth(tok["access_token"]), json=_MYSQL_BODY).json()
 
     fake_catalog_store = MagicMock()
+    fake_catalog_store.get_data_warehouse_config.return_value = {}
     fake_config = MagicMock()
     fake_config.catalog_store = fake_catalog_store
+    fake_config.data_warehouse_config = {}
+    fake_config.dialect = "sqlite"
 
     with (
         patch("openchatbi.config.get", return_value=fake_config),
@@ -239,9 +242,13 @@ def test_activate_reports_catalog_sync_failure(client):
     tok = _bootstrap_admin(client)
     a = client.post("/api/admin/database-connections", headers=_auth(tok["access_token"]), json=_MYSQL_BODY).json()
 
+    previous_dw = {"uri": "sqlite:///previous.db", "include_tables": None}
     fake_catalog_store = MagicMock()
+    fake_catalog_store.get_data_warehouse_config.return_value = dict(previous_dw)
     fake_config = MagicMock()
     fake_config.catalog_store = fake_catalog_store
+    fake_config.data_warehouse_config = dict(previous_dw)
+    fake_config.dialect = "sqlite"
 
     with (
         patch("openchatbi.config.get", return_value=fake_config),
@@ -252,13 +259,25 @@ def test_activate_reports_catalog_sync_failure(client):
             f"/api/admin/database-connections/{a['id']}/activate", headers=_auth(tok["access_token"])
         )
     assert r.status_code == 200
-    assert r.json()["is_active"] is True
-    apply_status = r.json()["runtime_apply"]
+    body = r.json()
+    # Sync failed after tentatively activating: roll back is_active and runtime URI.
+    assert body["is_active"] is False
+    apply_status = body["runtime_apply"]
     assert apply_status["catalog_sync_status"] == "failed"
     assert apply_status["index_reload_status"] == "skipped"
     assert apply_status["message"]
-    assert "catalog schema sync failed" in apply_status["message"]
+    assert "catalog schema sync failed" in apply_status["message"].lower()
+    assert "rolled back" in apply_status["message"].lower()
     reload_mock.assert_not_called()
+    # New URI was applied then previous warehouse config restored.
+    assert fake_catalog_store.set_data_warehouse_config.call_count == 2
+    restored = fake_catalog_store.set_data_warehouse_config.call_args_list[-1][0][0]
+    assert restored["uri"] == previous_dw["uri"]
+    assert fake_config.data_warehouse_config["uri"] == previous_dw["uri"]
+    assert fake_config.dialect == "sqlite"
+
+    listing = client.get("/api/admin/database-connections", headers=_auth(tok["access_token"])).json()
+    assert listing["active_connection_id"] is None
 
 
 def test_activate_reports_index_reload_failure(client):
@@ -266,8 +285,11 @@ def test_activate_reports_index_reload_failure(client):
     a = client.post("/api/admin/database-connections", headers=_auth(tok["access_token"]), json=_MYSQL_BODY).json()
 
     fake_catalog_store = MagicMock()
+    fake_catalog_store.get_data_warehouse_config.return_value = {}
     fake_config = MagicMock()
     fake_config.catalog_store = fake_catalog_store
+    fake_config.data_warehouse_config = {}
+    fake_config.dialect = "sqlite"
 
     with (
         patch("openchatbi.config.get", return_value=fake_config),
@@ -282,3 +304,72 @@ def test_activate_reports_index_reload_failure(client):
     assert apply_status["catalog_sync_status"] == "success"
     assert apply_status["index_reload_status"] == "failed"
     assert "index boom" in apply_status["message"]
+
+def test_activate_sync_failure_restores_previous_active_and_runtime(client):
+    """Failed sync must not leave Text2SQL on new-URI + old-catalog."""
+    tok = _bootstrap_admin(client)
+    a = client.post("/api/admin/database-connections", headers=_auth(tok["access_token"]), json=_MYSQL_BODY).json()
+    b_body = {
+        **_MYSQL_BODY,
+        "name": "staging-mysql",
+        "host": "staging.example.com",
+        "database": "staging",
+    }
+    b = client.post("/api/admin/database-connections", headers=_auth(tok["access_token"]), json=b_body).json()
+
+    previous_dw = {"uri": "mysql+pymysql://reader:sk-secret-db-9999@db.example.com:3306/analytics"}
+    fake_catalog_store = MagicMock()
+    fake_catalog_store.get_data_warehouse_config.return_value = dict(previous_dw)
+    fake_config = MagicMock()
+    fake_config.catalog_store = fake_catalog_store
+    fake_config.data_warehouse_config = dict(previous_dw)
+    fake_config.dialect = "mysql"
+
+    # First activation succeeds and becomes the live connection.
+    with (
+        patch("openchatbi.config.get", return_value=fake_config),
+        patch("openchatbi.catalog.catalog_loader.sync_catalog_from_data_warehouse", return_value=True),
+        patch("openchatbi.catalog.catalog_loader.reload_catalog_indexes"),
+    ):
+        r_a = client.post(
+            f"/api/admin/database-connections/{a['id']}/activate", headers=_auth(tok["access_token"])
+        )
+    assert r_a.status_code == 200
+    assert r_a.json()["is_active"] is True
+
+    # After success, runtime points at A; capture that as the "previous" for B's attempt.
+    a_applied = fake_catalog_store.set_data_warehouse_config.call_args[0][0]
+    fake_catalog_store.get_data_warehouse_config.return_value = dict(a_applied)
+    fake_config.data_warehouse_config = dict(a_applied)
+    fake_config.dialect = "mysql"
+    fake_catalog_store.set_data_warehouse_config.reset_mock()
+
+    with (
+        patch("openchatbi.config.get", return_value=fake_config),
+        patch("openchatbi.catalog.catalog_loader.sync_catalog_from_data_warehouse", return_value=False),
+        patch("openchatbi.catalog.catalog_loader.reload_catalog_indexes") as reload_mock,
+    ):
+        r_b = client.post(
+            f"/api/admin/database-connections/{b['id']}/activate", headers=_auth(tok["access_token"])
+        )
+    assert r_b.status_code == 200
+    body_b = r_b.json()
+    assert body_b["id"] == b["id"]
+    assert body_b["is_active"] is False
+    assert body_b["runtime_apply"]["catalog_sync_status"] == "failed"
+    assert "rolled back" in body_b["runtime_apply"]["message"].lower()
+    reload_mock.assert_not_called()
+
+    # Runtime must end on A's URI, not staging.
+    restored = fake_catalog_store.set_data_warehouse_config.call_args_list[-1][0][0]
+    assert "staging.example.com" not in restored["uri"]
+    assert "db.example.com" in restored["uri"]
+    assert fake_config.dialect == "mysql"
+    assert "staging.example.com" not in fake_config.data_warehouse_config["uri"]
+
+    listing = client.get("/api/admin/database-connections", headers=_auth(tok["access_token"])).json()
+    active_flags = {row["id"]: row["is_active"] for row in listing["connections"]}
+    assert active_flags[a["id"]] is True
+    assert active_flags[b["id"]] is False
+    assert listing["active_connection_id"] == a["id"]
+

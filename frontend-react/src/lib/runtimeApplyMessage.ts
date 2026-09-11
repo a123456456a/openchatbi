@@ -10,7 +10,7 @@ export function runtimeApplyNotice(status: ConnectionRuntimeApplyStatus): Runtim
   if (status.catalog_sync_status === 'failed') {
     return {
       tone: 'warning',
-      text: 'catalog 同步失败：连接已激活，但 catalog 可能仍是旧库——请重试同步或检查连接',
+      text: '同步失败，激活已回滚，请检查连接后重试',
     }
   }
   if (status.index_reload_status === 'failed') {
