@@ -10,6 +10,7 @@ from typing import Any
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from langgraph.types import Command
 from sqlalchemy.orm import Session
 
 from backend.auth.deps import get_current_user
@@ -124,7 +125,6 @@ async def chat_stream(
     """
     user_id = current_user.id
     session_id = req.session_id or "default"
-    stream_input = {"messages": [("user", req.input)]}
     run_config = build_run_config(user_id=user_id, session_id=session_id)
 
     provider, llm, config_hash = resolve_user_chat_llm(db, current_user)
@@ -132,6 +132,16 @@ async def chat_stream(
         graph = await get_or_build_graph(user_id, provider, llm, config_hash)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    # If the previous turn stopped on an `interrupt()` (e.g. AskHuman / low
+    # confidence SQL review), the graph must be resumed via `Command(resume=...)`
+    # on the same thread instead of being given a brand-new message; otherwise
+    # LangGraph would start a fresh run and the paused node's answer would be lost.
+    pending_state = await graph.aget_state(run_config)
+    if pending_state.interrupts:
+        stream_input: Any = Command(resume=req.input)
+    else:
+        stream_input = {"messages": [("user", req.input)]}
 
     async def text_generator():
         processor = AgentStreamProcessor()

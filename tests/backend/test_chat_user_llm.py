@@ -155,6 +155,56 @@ def test_chat_ignores_request_provider(client):
     assert build_graph.await_args.args[1] == "deepseek"
 
 
+def test_chat_resumes_pending_interrupt_with_command(client):
+    """When the graph is paused on an interrupt, the next turn must resume via
+    `Command(resume=...)` on the same thread instead of a fresh message input."""
+    from langgraph.types import Command
+
+    tok = _bootstrap_admin(client)
+    _put_deepseek(client, tok["access_token"])
+
+    seen_inputs = []
+
+    async def fake_astream(stream_input, *_args, **_kwargs):
+        seen_inputs.append(stream_input)
+        if False:
+            yield None
+        return
+
+    interrupt = MagicMock()
+    interrupt.value = {"text": "Approve?", "buttons": ["approve", "reject"]}
+    state = MagicMock()
+    state.interrupts = [interrupt]
+
+    mock_graph = MagicMock()
+    mock_graph.astream = fake_astream
+    mock_graph.aget_state = AsyncMock(return_value=state)
+
+    with (
+        patch("backend.chat.routes.build_chat_model", return_value=MagicMock()),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock(return_value=mock_graph)),
+        patch("backend.chat.routes.AgentStreamProcessor") as proc_cls,
+        patch("backend.chat.routes.extract_final_answer", return_value="ok"),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {}}),
+    ):
+        proc = MagicMock()
+        proc.process.return_value = []
+        proc.emit_turn_usage.return_value = None
+        proc.final_response = "ok"
+        proc_cls.return_value = proc
+
+        r = client.post(
+            "/api/chat/stream",
+            headers=_auth(tok["access_token"]),
+            json={"input": "approve", "session_id": "s1", "mode": "events"},
+        )
+
+    assert r.status_code == 200
+    assert len(seen_inputs) == 1
+    assert isinstance(seen_inputs[0], Command)
+    assert seen_inputs[0].resume == "approve"
+
+
 def test_put_settings_invalidates_user_graphs(client):
     from backend.llm.graph_cache import _graphs
 
