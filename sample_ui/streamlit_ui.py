@@ -268,17 +268,18 @@ def restore_history_if_needed(user_id: str, session_id: str, llm_provider: str |
         st.session_state.loaded_thread = thread
 
 
-def get_available_reports() -> list[str]:
-    """Get list of available report files for download."""
+def get_available_reports(user_id: str = "default") -> list[str]:
+    """Get list of available report files for download (scoped to ``user_id``)."""
     try:
         # Import config here to avoid circular imports
         from openchatbi import config
+        from openchatbi.utils import get_user_report_directory
 
-        report_dir = Path(config.get().report_directory)
+        report_dir = get_user_report_directory(config.get().report_directory, user_id)
         if not report_dir.exists():
             return []
 
-        # Get all files in the report directory
+        # Get all files in the per-user report directory
         report_files = []
         for file_path in report_dir.iterdir():
             if file_path.is_file():
@@ -290,8 +291,8 @@ def get_available_reports() -> list[str]:
         return []
 
 
-def get_report_file_content(filename: str) -> tuple[bytes | None, str | None]:
-    """Get report file content for download.
+def get_report_file_content(filename: str, user_id: str = "default") -> tuple[bytes | None, str | None]:
+    """Get report file content for download (scoped to ``user_id``).
 
     Returns:
         tuple: (file_content_bytes, mime_type) or (None, None) if error
@@ -299,19 +300,16 @@ def get_report_file_content(filename: str) -> tuple[bytes | None, str | None]:
     try:
         # Import config here to avoid circular imports
         from openchatbi import config
-
-        report_dir = Path(config.get().report_directory)
-        file_path = report_dir / filename
-
-        # Security check - ensure file is within report directory
-        if not file_path.exists() or not file_path.is_file():
-            st.error(f"Report file not found: {filename}")
-            return None, None
+        from openchatbi.utils import resolve_user_report_path
 
         try:
-            file_path.resolve().relative_to(report_dir.resolve())
-        except ValueError:
+            file_path = resolve_user_report_path(config.get().report_directory, user_id, filename)
+        except (ValueError, PermissionError):
             st.error("Access denied to file")
+            return None, None
+
+        if not file_path.exists() or not file_path.is_file():
+            st.error(f"Report file not found: {filename}")
             return None, None
 
         # Determine MIME type
@@ -386,7 +384,8 @@ def render_content_with_downloads(content: str) -> None:
         else:
             # Download link filename
             filename = part
-            file_content, mime_type = get_report_file_content(filename)
+            uid = st.session_state.get("report_user_id", "default")
+            file_content, mime_type = get_report_file_content(filename, user_id=uid)
 
             if file_content is not None:
                 st.download_button(
@@ -434,6 +433,7 @@ st.markdown("*AI-powered Business Intelligence Chat with Thinking*")
 with st.sidebar:
     st.header("⚙️ Configuration")
     user_id = st.text_input("User ID", value="default", help="Unique identifier for the user session")
+    st.session_state["report_user_id"] = user_id
     session_id = st.text_input("Session ID", value="default", help="Session identifier for conversation continuity")
 
     # Optional multi-provider support
@@ -469,7 +469,7 @@ with st.sidebar:
     st.markdown("### 📁 Report Downloads")
 
     # Get available reports
-    available_reports = get_available_reports()
+    available_reports = get_available_reports(user_id=user_id)
 
     if available_reports:
         selected_report = st.selectbox(
@@ -477,7 +477,7 @@ with st.sidebar:
         )
 
         if selected_report and st.button("📥 Download Report"):
-            file_content, mime_type = get_report_file_content(selected_report)
+            file_content, mime_type = get_report_file_content(selected_report, user_id=user_id)
             if file_content is not None:
                 st.download_button(
                     label=f"💾 Save {selected_report}",
