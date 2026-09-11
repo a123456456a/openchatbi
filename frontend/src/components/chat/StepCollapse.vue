@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 
 import Markdown from '../common/Markdown.vue'
-import { isToolStep, stepTitle, toolBodyText } from '../../lib/chatSteps'
+import { formatToolBody, isToolStep, stepTitle } from '../../lib/chatSteps'
 import type { ChatStep } from '../../types/stream'
 
 const props = withDefaults(
@@ -32,7 +32,13 @@ watch(
 )
 
 function bodyText(step: ChatStep): string {
-  return isToolStep(step) ? toolBodyText(step) : step.text
+  return isToolStep(step) ? formatToolBody(step) : step.text
+}
+
+/** Only render the (potentially large) markdown body once a panel is actually expanded, so a
+ * collapsed tool-result panel never pays the markdown-parsing cost that causes page stutter. */
+function isOpen(id: string): boolean {
+  return activeNames.value.includes(id)
 }
 </script>
 
@@ -46,7 +52,7 @@ function bodyText(step: ChatStep): string {
         :name="s.id"
       >
         <div class="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
-          <Markdown :text="bodyText(s)" class="text-xs leading-relaxed" />
+          <Markdown v-if="isOpen(s.id)" :text="bodyText(s)" class="text-xs leading-relaxed" />
         </div>
       </el-collapse-item>
     </el-collapse>
