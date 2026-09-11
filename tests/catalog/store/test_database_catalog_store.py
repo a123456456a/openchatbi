@@ -326,6 +326,24 @@ class TestCheckExists:
         assert db_store.get_table_list() == []
         assert db_store.get_table_selection_examples() == []
 
+    def test_snapshot_restore_round_trip(self, db_store):
+        db_store.save_table_information("Customers", _sample_information(), _sample_columns(), database="sales")
+        db_store.save_table_sql_examples(
+            "Customers", [{"question": "how many?", "answer": "select count(*) from Customers"}], database="sales"
+        )
+        db_store.save_table_selection_examples([("q", ["sales.Customers"])])
+        snapshot = db_store.snapshot_catalog()
+
+        assert db_store.clear_catalog() is True
+        assert db_store.check_exists() is False
+
+        assert db_store.restore_catalog_snapshot(snapshot) is True
+        assert db_store.check_exists() is True
+        assert any("Customers" in name for name in db_store.get_table_list())
+        assert db_store.get_table_selection_examples() == [("q", ["sales.Customers"])]
+        sql_examples = db_store.get_sql_examples("Customers", "sales")
+        assert sql_examples and sql_examples[0][0] == "how many?"
+
 
 # --------------------------------------------------------------------------
 # 5.10 Factory integration

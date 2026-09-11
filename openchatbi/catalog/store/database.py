@@ -641,3 +641,151 @@ class DatabaseCatalogStore(CatalogStore):
             logger.error(f"Failed to clear database catalog: {e}")
             logger.error(traceback.format_stack())
             return False
+
+    def snapshot_catalog(self) -> dict[str, Any]:
+        """Capture catalog rows (with stable id maps) for rollback-safe sync."""
+        with self._session_factory() as session:
+            databases = [
+                {"id": row.id, "name": row.name}
+                for row in session.scalars(select(CatalogDatabase).order_by(CatalogDatabase.id)).all()
+            ]
+            tables = [
+                {
+                    "id": row.id,
+                    "database_id": row.database_id,
+                    "table_name": row.table_name,
+                    "description": row.description or "",
+                    "selection_rule": row.selection_rule or "",
+                    "sql_rule": row.sql_rule or "",
+                    "derived_metric": row.derived_metric or "",
+                    "extra": row.extra,
+                }
+                for row in session.scalars(select(CatalogTable).order_by(CatalogTable.id)).all()
+            ]
+            columns = [
+                {
+                    "id": row.id,
+                    "column_name": row.column_name,
+                    "display_name": row.display_name or "",
+                    "alias": row.alias or "",
+                    "type": row.type or "",
+                    "category": row.category or "",
+                    "tag": row.tag or "",
+                    "description": row.description or "",
+                    "default": row.default or "",
+                    "scope_table_id": row.scope_table_id,
+                    "extra": row.extra,
+                }
+                for row in session.scalars(select(CatalogColumn).order_by(CatalogColumn.id)).all()
+            ]
+            table_columns = [
+                {"table_id": row.table_id, "column_id": row.column_id}
+                for row in session.scalars(select(CatalogTableColumn).order_by(CatalogTableColumn.id)).all()
+            ]
+            sql_examples = [
+                {
+                    "table_id": row.table_id,
+                    "question": row.question,
+                    "answer": row.answer,
+                }
+                for row in session.scalars(select(CatalogSqlExample).order_by(CatalogSqlExample.id)).all()
+            ]
+            selection_examples = [
+                {"question": row.question, "selected_tables": list(row.selected_tables or [])}
+                for row in session.scalars(
+                    select(CatalogTableSelectionExample).order_by(CatalogTableSelectionExample.id)
+                ).all()
+            ]
+        return {
+            "databases": databases,
+            "tables": tables,
+            "columns": columns,
+            "table_columns": table_columns,
+            "sql_examples": sql_examples,
+            "selection_examples": selection_examples,
+        }
+
+    def restore_catalog_snapshot(self, snapshot: dict[str, Any]) -> bool:
+        """Replace current catalog rows with a :meth:`snapshot_catalog` capture."""
+        try:
+            if not isinstance(snapshot, dict):
+                logger.error("Invalid database catalog snapshot type: %s", type(snapshot))
+                return False
+            if not self.clear_catalog():
+                return False
+
+            with self._session_factory() as session:
+                db_id_map: dict[int, int] = {}
+                for row in snapshot.get("databases", []):
+                    obj = CatalogDatabase(name=row["name"])
+                    session.add(obj)
+                    session.flush()
+                    db_id_map[row["id"]] = obj.id
+
+                table_id_map: dict[int, int] = {}
+                for row in snapshot.get("tables", []):
+                    obj = CatalogTable(
+                        database_id=db_id_map[row["database_id"]],
+                        table_name=row["table_name"],
+                        description=row.get("description", "") or "",
+                        selection_rule=row.get("selection_rule", "") or "",
+                        sql_rule=row.get("sql_rule", "") or "",
+                        derived_metric=row.get("derived_metric", "") or "",
+                        extra=row.get("extra"),
+                    )
+                    session.add(obj)
+                    session.flush()
+                    table_id_map[row["id"]] = obj.id
+
+                column_id_map: dict[int, int] = {}
+                for row in snapshot.get("columns", []):
+                    scope_table_id = row.get("scope_table_id")
+                    obj = CatalogColumn(
+                        column_name=row["column_name"],
+                        display_name=row.get("display_name", "") or "",
+                        alias=row.get("alias", "") or "",
+                        type=row.get("type", "") or "",
+                        category=row.get("category", "") or "",
+                        tag=row.get("tag", "") or "",
+                        description=row.get("description", "") or "",
+                        default=row.get("default", "") or "",
+                        scope_table_id=None if scope_table_id is None else table_id_map[scope_table_id],
+                        extra=row.get("extra"),
+                    )
+                    session.add(obj)
+                    session.flush()
+                    column_id_map[row["id"]] = obj.id
+
+                for row in snapshot.get("table_columns", []):
+                    session.add(
+                        CatalogTableColumn(
+                            table_id=table_id_map[row["table_id"]],
+                            column_id=column_id_map[row["column_id"]],
+                        )
+                    )
+
+                for row in snapshot.get("sql_examples", []):
+                    session.add(
+                        CatalogSqlExample(
+                            table_id=table_id_map[row["table_id"]],
+                            question=row["question"],
+                            answer=row["answer"],
+                        )
+                    )
+
+                for row in snapshot.get("selection_examples", []):
+                    session.add(
+                        CatalogTableSelectionExample(
+                            question=row["question"],
+                            selected_tables=list(row.get("selected_tables") or []),
+                        )
+                    )
+
+                session.commit()
+
+            logger.info("Restored database catalog snapshot")
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Failed to restore database catalog snapshot: {e}")
+            logger.error(traceback.format_stack())
+            return False

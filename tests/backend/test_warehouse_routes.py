@@ -256,6 +256,8 @@ def test_activate_reports_catalog_sync_failure(client):
     apply_status = r.json()["runtime_apply"]
     assert apply_status["catalog_sync_status"] == "failed"
     assert apply_status["index_reload_status"] == "skipped"
+    assert apply_status["message"]
+    assert "catalog schema sync failed" in apply_status["message"]
     reload_mock.assert_not_called()
 
 

@@ -233,6 +233,31 @@ class CatalogStore(ABC):
         """
         raise NotImplementedError
 
+    def snapshot_catalog(self) -> Any:
+        """Capture catalog contents so a failed sync can restore them.
+
+        Default raises :class:`NotImplementedError`. Stores that support runtime
+        schema sync must override this.
+
+        Returns:
+            Any: Opaque snapshot consumed only by :meth:`restore_catalog_snapshot`
+        """
+        raise NotImplementedError
+
+    def restore_catalog_snapshot(self, snapshot: Any) -> bool:
+        """Restore catalog contents previously captured by :meth:`snapshot_catalog`.
+
+        Default raises :class:`NotImplementedError`. Stores that support runtime
+        schema sync must override this.
+
+        Args:
+            snapshot (Any): Value returned by :meth:`snapshot_catalog`
+
+        Returns:
+            bool: True if the catalog was restored successfully
+        """
+        raise NotImplementedError
+
 
 def split_db_table_name(table: str, database: str | None = None) -> tuple[str, str, str]:
     """

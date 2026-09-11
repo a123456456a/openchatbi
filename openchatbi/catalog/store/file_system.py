@@ -871,6 +871,17 @@ class FileSystemCatalogStore(CatalogStore):
             logger.error(traceback.format_stack())
             return False
 
+    def _catalog_file_paths(self) -> list[str]:
+        """Return the on-disk files that make up the catalog snapshot."""
+        return [
+            self.table_info_file,
+            self.sql_example_file,
+            self.table_selection_example_file,
+            self.table_columns_file,
+            self.common_columns_file,
+            self.table_spec_columns_file,
+        ]
+
     def clear_catalog(self) -> bool:
         """Wipe filesystem catalog files so the next sync starts from an empty store."""
         try:
@@ -910,5 +921,43 @@ class FileSystemCatalogStore(CatalogStore):
             return ok
         except Exception as e:
             logger.error(f"Failed to clear filesystem catalog: {e}")
+            logger.error(traceback.format_stack())
+            return False
+
+    def snapshot_catalog(self) -> dict[str, bytes | None]:
+        """Capture raw catalog file bytes for rollback-safe sync."""
+        snapshot: dict[str, bytes | None] = {}
+        for path in self._catalog_file_paths():
+            key = os.path.basename(path)
+            if os.path.exists(path):
+                with open(path, "rb") as handle:
+                    snapshot[key] = handle.read()
+            else:
+                snapshot[key] = None
+        return snapshot
+
+    def restore_catalog_snapshot(self, snapshot: dict[str, bytes | None]) -> bool:
+        """Rewrite catalog files from a :meth:`snapshot_catalog` capture."""
+        try:
+            if not isinstance(snapshot, dict):
+                logger.error("Invalid filesystem catalog snapshot type: %s", type(snapshot))
+                return False
+            for path in self._catalog_file_paths():
+                key = os.path.basename(path)
+                content = snapshot.get(key, None)
+                if content is None:
+                    if os.path.exists(path):
+                        os.remove(path)
+                else:
+                    parent = os.path.dirname(path)
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                    with open(path, "wb") as handle:
+                        handle.write(content)
+            self._clear_cache()
+            logger.info("Restored filesystem catalog snapshot at %s", self.data_path)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to restore filesystem catalog snapshot: {e}")
             logger.error(traceback.format_stack())
             return False

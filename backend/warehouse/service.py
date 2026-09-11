@@ -243,7 +243,7 @@ def _apply_connection_to_runtime(
                 status.catalog_sync_status = "failed"
                 status.message = (
                     f"Activated connection {row.name} but catalog schema sync failed; "
-                    "catalog may still describe the previous warehouse"
+                    "previous catalog contents were restored when possible"
                 )
                 logger.warning(status.message)
     except Exception as exc:  # noqa: BLE001
