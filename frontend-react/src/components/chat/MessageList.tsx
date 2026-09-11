@@ -1,6 +1,7 @@
 import { Bot, Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   assistantCopyText,
   extractFileDownload,
@@ -34,9 +35,9 @@ function CopyButton({ text }: { text: string }) {
       onClick={onCopy}
       aria-label="复制回答"
       title="复制"
-      className="inline-flex items-center gap-1 rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-slate-100 hover:text-[var(--color-foreground)]"
+      className="inline-flex items-center gap-1 rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--color-muted)] hover:text-[var(--color-primary)]"
     >
-      {copied ? <Check size={14} /> : <Copy size={14} />}
+      {copied ? <Check size={14} className="text-[var(--color-primary)]" /> : <Copy size={14} />}
     </button>
   )
 }
@@ -57,22 +58,26 @@ function hasInlineArtifacts(m: ChatMessage): boolean {
 
 export default function MessageList({ messages }: { messages: ChatMessage[] }) {
   return (
-    <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+    <div className="scroll-thin chat-canvas-bg flex-1 space-y-6 overflow-y-auto px-6 py-6">
       {messages.map((m) =>
         m.role === 'user' ? (
-          <div key={m.id} className="ml-auto max-w-[75%]">
-            <div className="rounded-2xl rounded-tr-sm bg-slate-100 px-4 py-2.5 text-sm text-slate-900">
+          <div key={m.id} className="msg-in relative z-10 ml-auto max-w-[75%]">
+            <div className="rounded-2xl rounded-tr-sm bg-[var(--color-primary)]/8 px-4 py-2.5 text-sm text-slate-900 shadow-sm">
               <Markdown text={m.content} />
             </div>
           </div>
         ) : (
-          <div key={m.id} className="mr-auto max-w-[85%]">
-            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-[var(--color-muted-foreground)]">
-              <Bot size={14} className="text-[var(--color-primary)]" aria-hidden="true" />
-              OpenChatBI
+          <div key={m.id} className="msg-in relative z-10 mr-auto max-w-[85%]">
+            <div className="mb-2 flex items-center gap-2">
+              <Avatar className="h-6 w-6 shrink-0 shadow-sm" size="sm">
+                <AvatarFallback className="text-white" style={{ background: 'var(--gradient-brand)' }}>
+                  <Bot size={13} />
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-xs font-medium text-[var(--color-muted-foreground)]">OpenChatBI</span>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 pl-8">
               {/* Raw tool results, collapsed by default so a large payload (e.g. schema/knowledge
                   lookups) never gets forced onto the page or blocks rendering while streaming.
                   Shown above the answer body so the process trace reads top-to-bottom before the
@@ -97,7 +102,23 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
                 </div>
               ) : (
                 m.streaming && !m.thinking && m.steps.length === 0 && (
-                  <div className="text-sm text-[var(--color-muted-foreground)]">思考中…</div>
+                  <div className="flex items-center gap-2 text-sm text-[var(--color-muted-foreground)]">
+                    <span className="flex items-center gap-1" aria-hidden="true">
+                      <span
+                        className="thinking-dot h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]"
+                        style={{ animationDelay: '0ms' }}
+                      />
+                      <span
+                        className="thinking-dot h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]"
+                        style={{ animationDelay: '160ms' }}
+                      />
+                      <span
+                        className="thinking-dot h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]"
+                        style={{ animationDelay: '320ms' }}
+                      />
+                    </span>
+                    思考中…
+                  </div>
                 )
               )}
             </div>

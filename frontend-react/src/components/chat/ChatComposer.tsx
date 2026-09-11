@@ -38,7 +38,7 @@ export default function ChatComposer({
   return (
     <div
       className={cn(
-        'rounded-3xl border border-[var(--color-border)] bg-[var(--color-card)] p-3 shadow-[var(--shadow-card)] transition-shadow duration-200 focus-within:border-[var(--color-primary)] focus-within:shadow-md',
+        'rounded-3xl border border-[var(--color-border)] bg-[var(--color-card)] p-3 shadow-[var(--shadow-card)] transition-all duration-200 focus-within:border-[var(--color-primary)]/50 focus-within:shadow-[var(--shadow-float)]',
         className,
       )}
     >
@@ -61,7 +61,7 @@ export default function ChatComposer({
               aria-label="停止生成"
               title="停止生成"
               onClick={onStop}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-foreground)] text-white transition-opacity hover:opacity-90"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-foreground)] text-white shadow-sm transition-all duration-150 hover:opacity-90 active:scale-95"
             >
               <Square size={14} fill="currentColor" />
             </button>
@@ -72,7 +72,8 @@ export default function ChatComposer({
               title="发送"
               disabled={!value.trim()}
               onClick={handleSend}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-foreground)] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-white shadow-sm transition-all duration-150 enabled:hover:scale-105 enabled:hover:shadow-[var(--shadow-glow)] disabled:cursor-not-allowed disabled:opacity-30 active:enabled:scale-95"
+              style={{ background: value.trim() ? 'var(--gradient-brand)' : 'var(--color-foreground)' }}
             >
               <ArrowUp size={18} />
             </button>

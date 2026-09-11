@@ -92,7 +92,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="border-b border-[var(--color-border)] p-4">
           <div className="mb-4 flex items-center gap-2.5">
             <div
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white shadow-sm"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-[var(--shadow-glow)]"
+              style={{ background: 'var(--gradient-brand)' }}
               aria-hidden="true"
             >
               <MessageSquare size={18} />
@@ -104,8 +105,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <div className="text-xs text-[var(--color-muted-foreground)]">智能数据分析对话</div>
             </div>
           </div>
-          <Button className="h-10 w-full rounded-xl" onClick={newChat}>
-            <Plus className="mr-1" size={16} />
+          <Button
+            className="h-10 w-full rounded-xl shadow-sm transition-transform duration-150 active:scale-[0.98]"
+            onClick={newChat}
+          >
+            <Plus className="mr-1 transition-transform duration-150 group-hover/button:rotate-90" size={16} />
             新建会话
           </Button>
           <div className="relative mt-2">
@@ -124,7 +128,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-2" aria-label="会话列表">
+        <nav className="scroll-thin flex-1 overflow-y-auto p-2" aria-label="会话列表">
           {activeSessions.length === 0 ? (
             <div className="px-3 py-6 text-center text-xs text-[var(--color-muted-foreground)]">
               {query ? '没有匹配的会话' : '暂无会话，点击上方开始'}
@@ -136,17 +140,30 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   {group.label}
                 </div>
                 {group.sessions.map((s) => (
-                  <div key={s.id} className="mb-0.5 flex items-center gap-1">
+                  <div
+                    key={s.id}
+                    className={
+                      'group mb-0.5 flex items-center gap-1 rounded-lg transition-colors duration-200 ' +
+                      (params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-[var(--color-muted)]/60')
+                    }
+                  >
                     <button
                       type="button"
                       className={
-                        'flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200 ' +
+                        'relative flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200 ' +
                         (params.sessionId === s.id
-                          ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
-                          : 'text-slate-600 hover:bg-slate-50')
+                          ? 'font-medium text-[var(--color-primary)]'
+                          : 'text-slate-600 group-hover:text-[var(--color-foreground)]')
                       }
                       onClick={() => openSession(s.id)}
                     >
+                      {params.sessionId === s.id && (
+                        <span
+                          className="absolute top-1/2 left-0 h-4 w-[3px] -translate-y-1/2 rounded-full"
+                          style={{ background: 'var(--gradient-brand)' }}
+                          aria-hidden="true"
+                        />
+                      )}
                       <span className="truncate">{s.title}</span>
                     </button>
                     <DropdownMenu>
@@ -154,7 +171,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                         <button
                           type="button"
                           aria-label="会话操作"
-                          className="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100 data-open:bg-slate-100"
+                          className="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/5 data-open:bg-black/5 data-open:opacity-100"
                         >
                           <MoreHorizontal size={16} />
                         </button>
@@ -178,7 +195,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
           {archivedSessions.length > 0 && (
             <Collapsible className="mt-2 border-t border-[var(--color-border)] pt-2">
-              <CollapsibleTrigger className="group/archive-trigger flex w-full items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--color-muted-foreground)] hover:bg-slate-50 hover:text-[var(--color-foreground)]">
+              <CollapsibleTrigger className="group/archive-trigger flex w-full items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--color-muted-foreground)] hover:bg-[var(--color-muted)]/60 hover:text-[var(--color-foreground)]">
                 <ChevronRight size={12} className="transition-transform duration-150 data-open:rotate-90" />
                 已归档（{archivedSessions.length}）
               </CollapsibleTrigger>
@@ -187,8 +204,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   <div
                     key={s.id}
                     className={
-                      'flex min-w-0 items-center gap-1 rounded-lg px-3 py-2 text-sm text-slate-500 ' +
-                      (params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-slate-50')
+                      'group flex min-w-0 items-center gap-1 rounded-lg px-3 py-2 text-sm text-slate-500 transition-colors duration-200 ' +
+                      (params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-[var(--color-muted)]/60')
                     }
                   >
                     <button
@@ -202,7 +219,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       type="button"
                       aria-label="恢复会话"
                       title="恢复"
-                      className="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] hover:bg-slate-100"
+                      className="shrink-0 rounded-md p-1.5 text-[var(--color-muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/5"
                       onClick={() => unarchive(s.id)}
                     >
                       <ArchiveRestore size={14} />
@@ -211,7 +228,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       type="button"
                       aria-label="删除会话"
                       title="删除"
-                      className="shrink-0 rounded-md p-1.5 text-[var(--color-destructive)] hover:bg-red-50"
+                      className="shrink-0 rounded-md p-1.5 text-[var(--color-destructive)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50"
                       onClick={() => setPendingDeleteId(s.id)}
                     >
                       <Trash2 size={14} />
