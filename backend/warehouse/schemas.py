@@ -1,6 +1,18 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+CatalogSyncStatus = Literal["success", "failed", "skipped"]
+IndexReloadStatus = Literal["success", "failed", "skipped"]
+
+
+class ConnectionRuntimeApplyStatus(BaseModel):
+    """Outcome of pushing an active warehouse connection into the running catalog."""
+
+    catalog_sync_status: CatalogSyncStatus
+    index_reload_status: IndexReloadStatus
+    message: str | None = None
 
 
 class DialectCatalogItem(BaseModel):
@@ -34,6 +46,7 @@ class ConnectionOut(BaseModel):
     is_active: bool
     created_at: str | None = None
     updated_at: str | None = None
+    runtime_apply: ConnectionRuntimeApplyStatus | None = None
 
 
 class ConnectionsResponse(BaseModel):

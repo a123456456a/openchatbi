@@ -12,6 +12,7 @@ import {
   testDatabaseConnectionDraft,
   testExistingDatabaseConnection,
   updateDatabaseConnection,
+  type ConnectionRuntimeApplyStatus,
   type DatabaseConnection,
   type DatabaseConnectionInput,
   type DialectCatalogItem,
@@ -172,11 +173,35 @@ async function onSave() {
   }
 }
 
+function runtimeApplyMessage(status: ConnectionRuntimeApplyStatus): { type: 'success' | 'warning'; text: string } {
+  if (status.catalog_sync_status === 'failed') {
+    return {
+      type: 'warning',
+      text: 'catalog 同步失败：连接已激活，但 catalog 可能仍是旧库——请重试同步或检查连接',
+    }
+  }
+  if (status.index_reload_status === 'failed') {
+    return {
+      type: 'warning',
+      text: '索引重建失败：catalog 已更新，但检索索引重建失败——问数可能不准',
+    }
+  }
+  if (status.catalog_sync_status === 'success' && status.index_reload_status === 'success') {
+    return { type: 'success', text: '成功：数仓已激活，catalog 已同步并重建索引' }
+  }
+  return { type: 'success', text: '数仓已激活' }
+}
+
 async function onActivate(row: DatabaseConnection) {
   activatingId.value = row.id
   try {
-    await activateDatabaseConnection(row.id)
-    ElMessage.success(`已切换为「${row.name}」`)
+    const updated = await activateDatabaseConnection(row.id)
+    const notice = updated.runtime_apply ? runtimeApplyMessage(updated.runtime_apply) : null
+    if (notice?.type === 'warning') {
+      ElMessage.warning(notice.text)
+    } else {
+      ElMessage.success(notice?.text ?? `已切换为「${row.name}」`)
+    }
     await refresh()
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '切换失败')
