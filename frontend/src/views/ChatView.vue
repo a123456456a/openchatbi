@@ -73,6 +73,7 @@ async function onSend() {
 
         <div class="border-t border-[var(--color-border)] bg-[var(--color-card)] p-4">
           <div class="mx-auto max-w-3xl">
+            <InterruptDialog />
             <ChatComposer v-model="input" :streaming="chat.streaming" @send="onSend" @stop="chat.stop()" />
           </div>
         </div>
@@ -85,6 +86,5 @@ async function onSend() {
         </div>
       </template>
     </div>
-    <InterruptDialog />
   </AppShell>
 </template>

@@ -2,6 +2,7 @@
 import { Grid, Notebook, PieChart, TrendCharts } from '@element-plus/icons-vue'
 
 import ChatComposer from './ChatComposer.vue'
+import InterruptDialog from './InterruptDialog.vue'
 
 defineProps<{
   modelValue: string
@@ -31,6 +32,7 @@ const QUICK_PROMPTS = [
       </p>
 
       <div class="mt-6">
+        <InterruptDialog />
         <ChatComposer
           :model-value="modelValue"
           :streaming="streaming"
