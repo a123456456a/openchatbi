@@ -73,9 +73,15 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
             </div>
 
             <div className="space-y-2.5">
+              {/* Raw tool results, collapsed by default so a large payload (e.g. schema/knowledge
+                  lookups) never gets forced onto the page or blocks rendering while streaming.
+                  Shown above the answer body so the process trace reads top-to-bottom before the
+                  final answer. */}
+              <StepCollapse steps={nonFileToolSteps(m.steps)} defaultOpen={false} />
+
               {/* Main answer body: LLM text, then any tool-generated artifacts (charts, files)
                   rendered inline and in reading order. Raw tool results (often large JSON) are
-                  never dumped here — they stay in the collapsed panel below. */}
+                  never dumped here — they stay in the collapsed panel above. */}
               {hasInlineArtifacts(m) ? (
                 <div className="space-y-3 text-sm text-slate-800">
                   {m.content ? <Markdown text={m.content} /> : null}
@@ -94,10 +100,6 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
                   <div className="text-sm text-[var(--color-muted-foreground)]">思考中…</div>
                 )
               )}
-
-              {/* Raw tool results, collapsed by default so a large payload (e.g. schema/knowledge
-                  lookups) never gets forced onto the page or blocks rendering while streaming. */}
-              <StepCollapse steps={nonFileToolSteps(m.steps)} defaultOpen={false} />
             </div>
 
             {!m.streaming && hasInlineArtifacts(m) && (

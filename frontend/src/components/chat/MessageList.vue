@@ -65,9 +65,15 @@ function hasInlineArtifacts(m: ChatMessage): boolean {
         </div>
 
         <div class="space-y-2.5">
+          <!-- Raw tool results, collapsed by default so a large payload (e.g. schema/knowledge
+               lookups) never gets forced onto the page or blocks rendering while streaming.
+               Shown above the answer body so the process trace reads top-to-bottom before the
+               final answer. -->
+          <StepCollapse :steps="nonFileToolSteps(m.steps)" :default-open="false" />
+
           <!-- Main answer body: LLM text, then any tool-generated artifacts (charts, files)
                rendered inline and in reading order. Raw tool results (often large JSON) are
-               never dumped here — they stay in the collapsed panel below. -->
+               never dumped here — they stay in the collapsed panel above. -->
           <div v-if="hasInlineArtifacts(m)" class="space-y-3 text-sm text-slate-800">
             <Markdown v-if="m.content" :text="m.content" />
 
@@ -90,10 +96,6 @@ function hasInlineArtifacts(m: ChatMessage): boolean {
           >
             思考中…
           </div>
-
-          <!-- Raw tool results, collapsed by default so a large payload (e.g. schema/knowledge
-               lookups) never gets forced onto the page or blocks rendering while streaming. -->
-          <StepCollapse :steps="nonFileToolSteps(m.steps)" :default-open="false" />
         </div>
 
         <div v-if="!m.streaming && hasInlineArtifacts(m)" class="mt-1.5 flex items-center gap-1">
