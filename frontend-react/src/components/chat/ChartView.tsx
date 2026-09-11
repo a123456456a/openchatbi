@@ -1,32 +1,35 @@
-import { Chart, type ChartConfiguration } from 'chart.js/auto'
 import { useEffect, useMemo, useRef } from 'react'
 
-import { buildChartConfig, computeBoxStats } from '@/lib/chartConfig'
+import { buildChartConfig } from '@/lib/chartConfig'
 import { parseCsv } from '@/lib/csv'
+import echarts, { type ECharts } from '@/lib/echartsSetup'
 import DataTable from './DataTable'
 
-function CanvasChart({ config }: { config: ChartConfiguration }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const chartRef = useRef<Chart | null>(null)
+function EChartsCanvas({ option }: { option: NonNullable<ReturnType<typeof buildChartConfig>> }) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const chartRef = useRef<ECharts | null>(null)
 
   useEffect(() => {
-    if (!canvasRef.current) return
-    chartRef.current = new Chart(canvasRef.current, config)
+    if (!containerRef.current) return
+    chartRef.current = echarts.init(containerRef.current)
+    const resizeObserver = new ResizeObserver(() => chartRef.current?.resize())
+    resizeObserver.observe(containerRef.current)
     return () => {
-      chartRef.current?.destroy()
+      resizeObserver.disconnect()
+      chartRef.current?.dispose()
       chartRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config])
+  }, [])
 
-  return (
-    <div className="relative h-64 w-full">
-      <canvas ref={canvasRef} />
-    </div>
-  )
+  useEffect(() => {
+    chartRef.current?.setOption(option, true)
+  }, [option])
+
+  return <div ref={containerRef} className="h-72 w-full" />
 }
 
-/** Renders a `visualization_dsl` (see `openchatbi/text2sql/visualization.py`) + CSV data as a chart or data table. */
+/** Renders a `visualization_dsl` (see `openchatbi/text2sql/visualization.py`) + CSV data as an ECharts chart or data table. */
 export default function ChartView({
   visualizationDsl,
   csvData,
@@ -46,8 +49,8 @@ export default function ChartView({
         ? config.error
         : undefined
 
-  const chartConfig = useMemo(
-    () => (chartType === 'table' || chartType === 'box' ? null : buildChartConfig(chartType, config, layout, parsed)),
+  const chartOption = useMemo(
+    () => (chartType === 'table' ? null : buildChartConfig(chartType, config, layout, parsed)),
     [chartType, config, layout, parsed],
   )
 
@@ -59,19 +62,14 @@ export default function ChartView({
     )
   }
 
-  if (chartType === 'box') {
-    const stats = computeBoxStats(config, parsed)
-    return <DataTable title={title ?? '统计摘要'} columns={stats.columns} rows={stats.rows} />
-  }
-
-  if (!chartConfig) {
+  if (!chartOption) {
     return <DataTable title={title} columns={parsed.columns} rows={parsed.rows} />
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-white p-3">
+    <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-white p-3 shadow-[var(--shadow-card)]">
       {title && <div className="mb-2 text-xs font-medium text-slate-700">{title}</div>}
-      <CanvasChart config={chartConfig} />
+      <EChartsCanvas option={chartOption} />
     </div>
   )
 }

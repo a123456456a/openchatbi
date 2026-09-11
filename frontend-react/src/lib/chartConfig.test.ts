@@ -3,39 +3,46 @@ import { describe, expect, it } from 'vitest'
 import { buildChartConfig, computeBoxStats } from './chartConfig'
 import { parseCsv } from './csv'
 
+// EChartsOption shapes: `series` items carry `type`/`data`; category axes carry `data` as labels.
 describe('buildChartConfig', () => {
   it('builds a bar chart config from x/y columns', () => {
     const parsed = parseCsv('category,revenue\nA,10\nB,20')
     const cfg = buildChartConfig('bar', { x: 'category', y: 'revenue' }, {}, parsed)
-    expect(cfg?.type).toBe('bar')
-    expect(cfg?.data.labels).toEqual(['A', 'B'])
-    expect(cfg?.data.datasets).toHaveLength(1)
-    expect(cfg?.data.datasets[0].data).toEqual([10, 20])
+    const series = cfg?.series as Array<{ type: string; data: number[] }>
+    expect(series).toHaveLength(1)
+    expect(series[0].type).toBe('bar')
+    expect(series[0].data).toEqual([10, 20])
+    expect((cfg!.xAxis as { data: string[] }).data).toEqual(['A', 'B'])
   })
 
   it('builds a multi-series line chart when y is an array', () => {
     const parsed = parseCsv('month,a,b\nJan,1,2\nFeb,3,4')
     const cfg = buildChartConfig('line', { x: 'month', y: ['a', 'b'] }, {}, parsed)
-    expect(cfg?.type).toBe('line')
-    expect(cfg?.data.datasets).toHaveLength(2)
-    expect(cfg?.data.datasets.map((d) => d.label)).toEqual(['a', 'b'])
+    const series = cfg?.series as Array<{ type: string; name: string }>
+    expect(series).toHaveLength(2)
+    expect(series.map((s) => s.type)).toEqual(['line', 'line'])
+    expect(series.map((s) => s.name)).toEqual(['a', 'b'])
   })
 
   it('builds a pie chart from labels/values config', () => {
     const parsed = parseCsv('channel,share\nOnline,60\nStore,40')
     const cfg = buildChartConfig('pie', { labels: 'channel', values: 'share' }, {}, parsed)
-    expect(cfg?.type).toBe('pie')
-    expect(cfg?.data.labels).toEqual(['Online', 'Store'])
-    expect(cfg?.data.datasets[0].data).toEqual([60, 40])
+    const series = cfg?.series as Array<{ type: string; data: Array<{ name: string; value: number }> }>
+    expect(series[0].type).toBe('pie')
+    expect(series[0].data).toEqual([
+      { name: 'Online', value: 60 },
+      { name: 'Store', value: 40 },
+    ])
   })
 
   it('builds a scatter chart from x/y numeric columns', () => {
     const parsed = parseCsv('x,y\n1,2\n3,4')
     const cfg = buildChartConfig('scatter', { x: 'x', y: 'y' }, {}, parsed)
-    expect(cfg?.type).toBe('scatter')
-    expect(cfg?.data.datasets[0].data).toEqual([
-      { x: 1, y: 2 },
-      { x: 3, y: 4 },
+    const series = cfg?.series as Array<{ type: string; data: number[][] }>
+    expect(series[0].type).toBe('scatter')
+    expect(series[0].data).toEqual([
+      [1, 2],
+      [3, 4],
     ])
   })
 
@@ -43,16 +50,26 @@ describe('buildChartConfig', () => {
     const parsed = parseCsv('v\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10')
     const cfg = buildChartConfig('histogram', { x: 'v', nbins: 5 }, {}, parsed)
     expect(cfg).not.toBeNull()
-    expect(cfg?.type).toBe('bar')
-    expect(cfg?.data.labels).toHaveLength(5)
-    const total = ((cfg?.data.datasets[0].data ?? []) as number[]).reduce((a, b) => a + b, 0)
+    const series = cfg?.series as Array<{ type: string; data: number[] }>
+    expect(series[0].type).toBe('bar')
+    expect((cfg!.xAxis as { data: string[] }).data).toHaveLength(5)
+    const total = series[0].data.reduce((a, b) => a + b, 0)
     expect(total).toBe(10)
   })
 
-  it('returns null for unsupported chart types (e.g. table/box)', () => {
+  it('builds a native boxplot series for the "box" chart type', () => {
+    const parsed = parseCsv('group,value\nA,1\nA,2\nA,3\nA,4\nB,10\nB,20')
+    const cfg = buildChartConfig('box', { x: 'group', y: 'value' }, {}, parsed)
+    const series = cfg?.series as Array<{ type: string; data: number[][] }>
+    expect(series[0].type).toBe('boxplot')
+    expect((cfg!.xAxis as { data: string[] }).data).toEqual(['A', 'B'])
+    // [min, Q1, median, Q3, max] for group A
+    expect(series[0].data[0]).toEqual([1, 1.75, 2.5, 3.25, 4])
+  })
+
+  it('returns null for unsupported chart types (e.g. table)', () => {
     const parsed = parseCsv('a,b\n1,2')
     expect(buildChartConfig('table', {}, {}, parsed)).toBeNull()
-    expect(buildChartConfig('box', {}, {}, parsed)).toBeNull()
   })
 
   it('returns null when there is no row data', () => {
