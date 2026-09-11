@@ -53,7 +53,7 @@ def main():
         base_cmd.append("-v")
 
     if args.coverage:
-        base_cmd.extend(["--cov=openchatbi", "--cov-report=html", "--cov-report=term-missing"])
+        base_cmd.extend(["--cov=openchatbi", "--cov=backend", "--cov-report=html", "--cov-report=term-missing"])
 
     if args.unit:
         base_cmd.extend(["-m", "unit"])
@@ -92,7 +92,7 @@ def main():
         test_commands = [
             (["uv", "run", "pytest", "-m", "unit", "-v"], "Unit Tests"),
             (["uv", "run", "pytest", "-m", "integration", "-v"], "Integration Tests"),
-            (["uv", "run", "pytest", "--cov=openchatbi", "--cov-report=html"], "Coverage Report"),
+            (["uv", "run", "pytest", "--cov=openchatbi", "--cov=backend", "--cov-report=html"], "Coverage Report"),
         ]
 
         for cmd, desc in test_commands:

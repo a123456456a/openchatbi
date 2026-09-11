@@ -265,6 +265,7 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--cov=openchatbi",
+    "--cov=backend",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
@@ -286,7 +287,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["openchatbi"]
+source = ["openchatbi", "backend"]
 omit = [
     "*/tests/*",
     "*/test_*.py",

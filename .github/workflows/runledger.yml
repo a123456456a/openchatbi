@@ -2,7 +2,7 @@ name: runledger
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ main ]
+    branches: [ main, local-main ]
 
 jobs:
   runledger:
