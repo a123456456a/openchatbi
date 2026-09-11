@@ -6,14 +6,23 @@ import AppShell from '../components/layout/AppShell.vue'
 import ChatComposer from '../components/chat/ChatComposer.vue'
 import ChatWelcome from '../components/chat/ChatWelcome.vue'
 import MessageList from '../components/chat/MessageList.vue'
-import InterruptDialog from '../components/chat/InterruptDialog.vue'
+import InterruptPrompt from '../components/chat/InterruptPrompt.vue'
+import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
 import { useSessionsStore } from '../stores/sessions'
+import { useSettingsStore } from '../stores/settings'
+
+/** Must match `MISSING_LLM_SETTINGS_DETAIL` in `backend/chat/routes.py`. */
+const MISSING_LLM_SETTINGS_DETAIL = '请先在设置中配置模型'
+/** Must match `MISSING_WAREHOUSE_DETAIL` in `backend/warehouse/gate.py`. */
+const MISSING_WAREHOUSE_DETAIL = '请先在管理端激活数仓'
 
 const route = useRoute()
 const router = useRouter()
 const chat = useChatStore()
 const sessions = useSessionsStore()
+const settings = useSettingsStore()
+const auth = useAuthStore()
 
 const input = ref('')
 const sessionId = computed(() => {
@@ -22,6 +31,10 @@ const sessionId = computed(() => {
 })
 
 const hasMessages = computed(() => chat.messages.length > 0)
+const showMissingLlmCta = computed(() => chat.error === MISSING_LLM_SETTINGS_DETAIL)
+const showMissingWarehouseCta = computed(
+  () => chat.error === MISSING_WAREHOUSE_DETAIL && auth.role === 'admin',
+)
 
 onMounted(() => {
   if (!sessionId.value) {
@@ -46,6 +59,10 @@ async function onSend() {
   input.value = ''
   await chat.send(id, text)
 }
+
+function goActivateWarehouse() {
+  void router.push({ name: 'admin-databases' })
+}
 </script>
 
 <template>
@@ -68,12 +85,21 @@ async function onSend() {
         <MessageList :messages="chat.messages" />
 
         <div v-if="chat.error" class="px-6 pb-2">
-          <el-alert type="error" :title="chat.error" show-icon :closable="false" />
+          <el-alert type="error" :title="chat.error" show-icon :closable="false">
+            <div v-if="showMissingLlmCta || showMissingWarehouseCta" class="mt-2">
+              <el-button v-if="showMissingLlmCta" size="small" @click="settings.openSettings()">
+                去设置
+              </el-button>
+              <el-button v-if="showMissingWarehouseCta" size="small" @click="goActivateWarehouse">
+                去激活数仓
+              </el-button>
+            </div>
+          </el-alert>
         </div>
 
         <div class="border-t border-[var(--color-border)] bg-[var(--color-card)] p-4">
           <div class="mx-auto max-w-3xl">
-            <InterruptDialog />
+            <InterruptPrompt />
             <ChatComposer v-model="input" :streaming="chat.streaming" @send="onSend" @stop="chat.stop()" />
           </div>
         </div>
@@ -82,7 +108,16 @@ async function onSend() {
       <template v-else>
         <ChatWelcome v-model="input" :streaming="chat.streaming" @send="onSend" @stop="chat.stop()" />
         <div v-if="chat.error" class="px-6 pb-6">
-          <el-alert type="error" :title="chat.error" show-icon :closable="false" />
+          <el-alert type="error" :title="chat.error" show-icon :closable="false">
+            <div v-if="showMissingLlmCta || showMissingWarehouseCta" class="mt-2">
+              <el-button v-if="showMissingLlmCta" size="small" @click="settings.openSettings()">
+                去设置
+              </el-button>
+              <el-button v-if="showMissingWarehouseCta" size="small" @click="goActivateWarehouse">
+                去激活数仓
+              </el-button>
+            </div>
+          </el-alert>
         </div>
       </template>
     </div>

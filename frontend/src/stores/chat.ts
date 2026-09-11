@@ -6,6 +6,9 @@ import type { ChatMessage, ChatStep, StreamEvent } from '../types/stream'
 import { useSettingsStore } from './settings'
 import { useSessionsStore } from './sessions'
 
+/** Must match `MISSING_LLM_SETTINGS_DETAIL` in `backend/chat/routes.py`. */
+const MISSING_LLM_SETTINGS_DETAIL = '请先在设置中配置模型'
+
 function uid() {
   return crypto.randomUUID()
 }
@@ -145,6 +148,12 @@ export const useChatStore = defineStore('chat', () => {
       if ((e as Error).name === 'AbortError') return
       const message = e instanceof Error ? e.message : String(e)
       if (isActive()) error.value = message
+      if (message === MISSING_LLM_SETTINGS_DETAIL) {
+        // No model provider configured for this account yet: open the settings
+        // dialog directly so the user can pick and save a provider inline,
+        // instead of only surfacing a dead-end error bubble in the chat.
+        useSettingsStore().openSettings()
+      }
       if (!assistantMsg.content) {
         assistantMsg.content = `错误：${message}`
       }
