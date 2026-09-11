@@ -11,6 +11,9 @@ function uid() {
   return crypto.randomUUID()
 }
 
+/** Must match `MISSING_LLM_SETTINGS_DETAIL` in `backend/chat/routes.py`. */
+const MISSING_LLM_SETTINGS_DETAIL = '请先在设置中配置模型'
+
 type ChatState = {
   sessionId: string | null
   messages: ChatMessage[]
@@ -122,6 +125,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (e instanceof Error && e.name === 'AbortError') return
       const message = e instanceof Error ? e.message : String(e)
       if (isActive()) set({ error: message })
+      if (message === MISSING_LLM_SETTINGS_DETAIL) {
+        // No model provider configured for this account yet: open the settings
+        // dialog directly so the user can pick and save a provider inline,
+        // instead of only surfacing a dead-end error bubble in the chat.
+        useSettingsStore.getState().openSettings()
+      }
       if (!assistantMsg.content) {
         assistantMsg.content = `错误：${message}`
       }

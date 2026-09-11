@@ -6,9 +6,14 @@ import ChatComposer from '@/components/chat/ChatComposer'
 import ChatWelcome from '@/components/chat/ChatWelcome'
 import InterruptDialog from '@/components/chat/InterruptDialog'
 import MessageList from '@/components/chat/MessageList'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
+import { useSettingsStore } from '@/stores/settings'
+
+/** Must match `MISSING_LLM_SETTINGS_DETAIL` in `backend/chat/routes.py`. */
+const MISSING_LLM_SETTINGS_DETAIL = '请先在设置中配置模型'
 
 export default function ChatPage() {
   const navigate = useNavigate()
@@ -21,6 +26,7 @@ export default function ChatPage() {
   const send = useChatStore((s) => s.send)
   const stop = useChatStore((s) => s.stop)
   const loadSession = useChatStore((s) => s.loadSession)
+  const openSettings = useSettingsStore((s) => s.openSettings)
 
   const [input, setInput] = useState('')
 
@@ -68,6 +74,13 @@ export default function ChatPage() {
               <div className="px-6 pb-2">
                 <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
+                  {error === MISSING_LLM_SETTINGS_DETAIL && (
+                    <AlertAction>
+                      <Button size="sm" variant="outline" onClick={openSettings}>
+                        去设置
+                      </Button>
+                    </AlertAction>
+                  )}
                 </Alert>
               </div>
             )}
@@ -85,6 +98,13 @@ export default function ChatPage() {
               <div className="px-6 pb-6">
                 <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
+                  {error === MISSING_LLM_SETTINGS_DETAIL && (
+                    <AlertAction>
+                      <Button size="sm" variant="outline" onClick={openSettings}>
+                        去设置
+                      </Button>
+                    </AlertAction>
+                  )}
                 </Alert>
               </div>
             )}
