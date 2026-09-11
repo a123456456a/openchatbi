@@ -111,6 +111,11 @@ sudo apt-get install libsqlite3-dev
 ```bash
 # 终端 1：后端 API（默认 http://localhost:8000）
 uv sync
+# Production-safe: set a strong secret (required unless you opt into insecure defaults).
+export JWT_SECRET="$(openssl rand -hex 32)"
+# Local demo only — alternatively allow the built-in demo secret:
+#   export ALLOW_INSECURE_DEFAULTS=true
+#   # or: export APP_ENV=development
 uv run python run_backend.py
 
 # 终端 2：前端（默认 http://localhost:5173，已代理 /oauth /api）
@@ -118,6 +123,11 @@ cd frontend
 pnpm install
 pnpm dev
 ```
+
+`JWT_SECRET` defaults to a well-known demo value (`dev-only-change-me`). Real / production
+runs **refuse to start** with that secret. For local demo you must either set a strong
+`JWT_SECRET`, or explicitly opt in with `ALLOW_INSECURE_DEFAULTS=true` or
+`APP_ENV=development` (never enable those in production).
 
 首次打开登录页可点「首次初始化」创建首个 `admin`，或调用 `POST /api/auth/bootstrap`。
 
@@ -209,9 +219,11 @@ enable_sql_result_limit: true
 sql_result_limit: 10000
 ```
 
-5. **Optionally enable the fail-closed Text2SQL SQL guard:**
+5. **Fail-closed Text2SQL SQL guard (on in product/example configs):**
 
-The application-layer SQL guard keeps its backward-compatible fail-open behavior by default after known dangerous patterns are rejected. Deployments that prefer stricter enforcement can opt in to the read-only allowlist:
+Product and example configs (`example/config.yaml`, `openchatbi/config.yaml.template`) enable
+the fail-closed read-only allowlist by default. Library `Config` still defaults to off when
+the flag is omitted in custom/programmatic setups (backward compatible).
 
 ```yaml
 enable_fail_closed_sql_guard: true
@@ -372,7 +384,8 @@ For detailed configuration options and examples, see the [Advanced Features](#ad
 ## Agent Harness Features
 
 The agent harness adds observability, human-in-the-loop quality gating, learned SQL memory and an evaluation
-toolchain. All of these are **off by default** and enabled individually in `config.yaml`.
+toolchain. Most flags remain **off** in the library `Config` defaults for backward compatibility;
+product/example configs enable the fail-closed SQL guard and HITL confidence gate by default.
 
 ### Observability
 
@@ -390,7 +403,7 @@ After a successful execution, an LLM evaluator scores the SQL against the source
 Low-confidence SQL pauses the graph and asks the user to approve / reject / edit before the answer is returned.
 
 ```yaml
-enable_confidence_gate: true     # default false
+enable_confidence_gate: true     # on in product/example configs; library default false
 sql_confidence_threshold: 0.7    # interrupt below this score
 ```
 
