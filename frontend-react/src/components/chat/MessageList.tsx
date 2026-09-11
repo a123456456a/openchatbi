@@ -6,13 +6,13 @@ import {
   extractFileDownload,
   fileResultSteps,
   nonFileToolSteps,
-  toolBodyText,
   toolSteps,
   visualizationSteps,
 } from '@/lib/chatSteps'
 import type { ChatMessage, ChatStep } from '@/types/stream'
 import ChartView from './ChartView'
 import FileDownloadCard from './FileDownloadCard'
+import StepCollapse from './StepCollapse'
 import Markdown from '../common/Markdown'
 
 function CopyButton({ text }: { text: string }) {
@@ -73,9 +73,9 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
             </div>
 
             <div className="space-y-2.5">
-              {/* Main answer body: LLM text, then any tool-generated artifacts (charts, files,
-                  raw tool results) rendered inline and in reading order — not hidden in a
-                  collapsed "step" panel. */}
+              {/* Main answer body: LLM text, then any tool-generated artifacts (charts, files)
+                  rendered inline and in reading order. Raw tool results (often large JSON) are
+                  never dumped here — they stay in the collapsed panel below. */}
               {hasInlineArtifacts(m) ? (
                 <div className="space-y-3 text-sm text-slate-800">
                   {m.content ? <Markdown text={m.content} /> : null}
@@ -88,16 +88,16 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
                     const file = extractFileDownload(s)
                     return file ? <FileDownloadCard key={s.id} {...file} /> : null
                   })}
-
-                  {nonFileToolSteps(m.steps).map((s) => (
-                    <Markdown key={s.id} text={toolBodyText(s)} />
-                  ))}
                 </div>
               ) : (
                 m.streaming && !m.thinking && m.steps.length === 0 && (
                   <div className="text-sm text-[var(--color-muted-foreground)]">思考中…</div>
                 )
               )}
+
+              {/* Raw tool results, collapsed by default so a large payload (e.g. schema/knowledge
+                  lookups) never gets forced onto the page or blocks rendering while streaming. */}
+              <StepCollapse steps={nonFileToolSteps(m.steps)} defaultOpen={false} />
             </div>
 
             {!m.streaming && hasInlineArtifacts(m) && (
