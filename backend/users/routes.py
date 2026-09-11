@@ -1,4 +1,4 @@
-"""Admin user CRUD and role-gated report download."""
+"""Admin user CRUD and ownership-scoped report download."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -77,6 +77,12 @@ def update_user(
 @download_router.get("/report/{filename}")
 def download_report(
     filename: str,
-    _user: User = Depends(require_roles("analyst", "admin")),
+    user: User = Depends(require_roles("analyst", "admin")),
 ):
-    return get_report_download_response(filename)
+    """Download a report owned by the authenticated user.
+
+    Ownership is always the JWT subject. Admins do **not** get cross-user
+    access by default (no separate audit bypass switch is enabled).
+    """
+    # Intentionally ignore any client-supplied owner id — scope to ``user.id`` only.
+    return get_report_download_response(filename, user_id=user.id)

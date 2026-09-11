@@ -231,9 +231,9 @@ async def get_user_memories(user_id: str):
 
 
 @app.get("/api/download/report/{filename}")
-async def download_report(filename: str):
-    """Download a saved report file."""
-    return get_report_download_response(filename)
+async def download_report(filename: str, user_id: str = "default"):
+    """Download a saved report file for ``user_id`` (demo API; no auth)."""
+    return get_report_download_response(filename, user_id=user_id)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,16 @@
 """Tool for saving reports to files."""
 
 import datetime
-from pathlib import Path
+from typing import Annotated
 
-from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import InjectedToolArg, tool
 from pydantic import BaseModel, Field
 
-from openchatbi import config
+from openchatbi import config as app_config
+from openchatbi.observability.context import get_run_context
 from openchatbi.tool.report_writers import write_docx, write_xlsx
-from openchatbi.utils import log
+from openchatbi.utils import get_user_report_directory, log, sanitize_report_user_id
 
 TEXT_FORMATS = {"md", "csv", "txt", "json", "html", "xml"}
 OFFICE_FORMATS = {"docx", "xlsx"}
@@ -27,8 +29,27 @@ class SaveReportInput(BaseModel):
     )
 
 
+def _resolve_report_user_id(run_config: RunnableConfig | None) -> str | None:
+    """Prefer run-context user_id; fall back to LangGraph configurable.user_id."""
+    user_id, _ = get_run_context()
+    if user_id:
+        return user_id
+    if run_config:
+        configurable = run_config.get("configurable") or {}
+        cfg_uid = configurable.get("user_id")
+        if isinstance(cfg_uid, str) and cfg_uid:
+            return cfg_uid
+    return None
+
+
 @tool("save_report", args_schema=SaveReportInput, return_direct=False, infer_schema=True)
-def save_report(content: str, title: str, file_format: str = "md") -> str:
+def save_report(
+    content: str,
+    title: str,
+    file_format: str = "md",
+    *,
+    config: Annotated[RunnableConfig, InjectedToolArg],
+) -> str:
     """Save a report to a file with timestamp and title in filename.
 
     Args:
@@ -47,11 +68,21 @@ def save_report(content: str, title: str, file_format: str = "md") -> str:
         raise ValueError(f"Unsupported file format: {file_format}")
 
     try:
-        # Get report directory from config
-        report_dir = config.get().report_directory
+        raw_user_id = _resolve_report_user_id(config)
+        if not raw_user_id:
+            error_msg = "Failed to save report: missing user context (user_id)"
+            log(error_msg)
+            return error_msg
+        try:
+            user_id = sanitize_report_user_id(raw_user_id)
+        except ValueError:
+            error_msg = "Failed to save report: invalid user_id for report isolation"
+            log(error_msg)
+            return error_msg
 
-        # Create directory if it doesn't exist
-        Path(report_dir).mkdir(parents=True, exist_ok=True)
+        # Per-user directory under the configured report root
+        report_dir = get_user_report_directory(app_config.get().report_directory, user_id)
+        report_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate timestamp for filename
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -62,7 +93,7 @@ def save_report(content: str, title: str, file_format: str = "md") -> str:
 
         # Create filename
         filename = f"{timestamp}_{clean_title}.{file_format}"
-        file_path = Path(report_dir) / filename
+        file_path = report_dir / filename
 
         if file_format == "docx":
             write_docx(file_path, title, content)
@@ -75,7 +106,7 @@ def save_report(content: str, title: str, file_format: str = "md") -> str:
 
         log(f"Report saved: {file_path}")
 
-        # Return success message with download link
+        # Download URL stays basename-only; ownership is enforced via auth on download
         download_url = f"/api/download/report/{filename}"
         return f"Report saved successfully! Download link: {download_url}"
 

@@ -82,11 +82,66 @@ def extract_json_from_answer(answer: str) -> dict[str, Any]:
     return {}
 
 
-def get_report_download_response(filename: str) -> FileResponse:
-    """Get FileResponse for downloading a report file.
+def sanitize_report_user_id(user_id: str) -> str:
+    """Validate and return a filesystem-safe user id for report isolation.
+
+    Rejects empty values and any segment that could escape a per-user directory
+    (path separators, ``.`` / ``..``, or non [A-Za-z0-9_-] characters).
+    """
+    if not isinstance(user_id, str) or not user_id:
+        raise ValueError("user_id is required")
+    if user_id in (".", "..") or "/" in user_id or "\\" in user_id or "\0" in user_id:
+        raise ValueError("invalid user_id")
+    if not all(c.isalnum() or c in "-_" for c in user_id):
+        raise ValueError("invalid user_id")
+    return user_id
+
+
+def sanitize_report_filename(filename: str) -> str:
+    """Validate report filename is a single path segment (no traversal)."""
+    if not isinstance(filename, str) or not filename:
+        raise ValueError("filename is required")
+    name = Path(filename).name
+    if name != filename or name in (".", ".."):
+        raise ValueError("invalid filename")
+    if "/" in filename or "\\" in filename or "\0" in filename:
+        raise ValueError("invalid filename")
+    return name
+
+
+def get_user_report_directory(report_dir: str | Path, user_id: str) -> Path:
+    """Return ``{report_dir}/{user_id}/`` for per-user report isolation."""
+    safe_uid = sanitize_report_user_id(user_id)
+    return Path(report_dir) / safe_uid
+
+
+def resolve_user_report_path(report_dir: str | Path, user_id: str, filename: str) -> Path:
+    """Resolve a report path under the caller's user directory.
+
+    Raises:
+        ValueError: If ``user_id`` or ``filename`` is unsafe.
+        PermissionError: If the resolved path escapes the user directory.
+    """
+    safe_name = sanitize_report_filename(filename)
+    user_dir = get_user_report_directory(report_dir, user_id)
+    file_path = user_dir / safe_name
+    try:
+        file_path.resolve().relative_to(user_dir.resolve())
+    except ValueError as exc:
+        raise PermissionError("Access denied") from exc
+    return file_path
+
+
+def get_report_download_response(filename: str, user_id: str) -> FileResponse:
+    """Get FileResponse for downloading a report owned by ``user_id``.
+
+    Reports are stored under ``{report_directory}/{user_id}/``. Callers must
+    pass the *authenticated* user id — never a client-supplied owner id.
+    Admins are not granted cross-user access by this helper.
 
     Args:
-        filename: The filename of the report to download
+        filename: The filename of the report to download (basename only)
+        user_id: Owner scope for the report (authenticated subject)
 
     Returns:
         FileResponse: Response object for file download
@@ -98,22 +153,16 @@ def get_report_download_response(filename: str) -> FileResponse:
         # Import config here to avoid circular imports
         from openchatbi import config
 
-        # Get report directory from config
-        report_dir = config.get().report_directory
-        file_path = Path(report_dir) / filename
-
-        # Check if file exists and is within the report directory
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Report file not found")
-
-        if not file_path.is_file():
-            raise HTTPException(status_code=400, detail="Invalid file path")
-
-        # Ensure the file is within the report directory (security check)
         try:
-            file_path.resolve().relative_to(Path(report_dir).resolve())
+            file_path = resolve_user_report_path(config.get().report_directory, user_id, filename)
         except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid file path") from None
+        except PermissionError:
             raise HTTPException(status_code=403, detail="Access denied") from None
+
+        # Missing / non-file → 404 (do not leak whether another user's file exists)
+        if not file_path.exists() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Report file not found")
 
         # Determine media type based on file extension
         media_type_map = {
@@ -127,10 +176,11 @@ def get_report_download_response(filename: str) -> FileResponse:
             ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }
 
+        safe_name = sanitize_report_filename(filename)
         file_extension = file_path.suffix.lower()
         media_type = media_type_map.get(file_extension, "application/octet-stream")
 
-        return FileResponse(path=str(file_path), media_type=media_type, filename=filename)
+        return FileResponse(path=str(file_path), media_type=media_type, filename=safe_name)
 
     except HTTPException:
         raise

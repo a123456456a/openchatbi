@@ -87,9 +87,9 @@ with gr.Blocks(css=custom_css, theme=gr.themes.Soft()) as demo:
 
 # ---------- API Endpoints ----------
 @app.get("/api/download/report/{filename}")
-def download_report(filename: str):
-    """Download a saved report file."""
-    return get_report_download_response(filename)
+def download_report(filename: str, user_id: str = "default"):
+    """Download a saved report file for ``user_id`` (demo UI; no auth)."""
+    return get_report_download_response(filename, user_id=user_id)
 
 
 # ---------- Application Startup ----------

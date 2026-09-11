@@ -122,7 +122,7 @@ def test_report_download_requires_analyst_or_admin(client, monkeypatch):
 
     monkeypatch.setattr(
         "backend.users.routes.get_report_download_response",
-        lambda filename: PlainTextResponse(f"ok:{filename}"),
+        lambda filename, user_id=None: PlainTextResponse(f"ok:{filename}:{user_id}"),
     )
 
     forbidden = client.get(
@@ -137,4 +137,72 @@ def test_report_download_requires_analyst_or_admin(client, monkeypatch):
             headers=_auth(tok["access_token"]),
         )
         assert allowed.status_code == 200
-        assert allowed.text == "ok:demo.md"
+        assert allowed.text.startswith("ok:demo.md:")
+
+
+def test_report_download_owner_allowed_cross_user_denied(client, tmp_path, monkeypatch):
+    """Owner can download; other users (including admin) cannot — no admin bypass."""
+    report_root = tmp_path / "reports"
+
+    monkeypatch.setattr(
+        "openchatbi.config.get",
+        lambda: type("Cfg", (), {"report_directory": str(report_root)})(),
+    )
+
+    client.post("/api/auth/bootstrap", json={"username": "admin", "password": "Admin123!"})
+    owner_id = _create_user("owner1", "Owner123!", Role.analyst.value)
+    _create_user("other1", "Other123!", Role.analyst.value)
+
+    owner_dir = report_root / owner_id
+    owner_dir.mkdir(parents=True)
+    report_file = owner_dir / "secret.md"
+    report_file.write_text("owner-secret", encoding="utf-8")
+
+    owner_tok = _password_token(client, "owner1", "Owner123!")
+    other_tok = _password_token(client, "other1", "Other123!")
+    admin_tok = _password_token(client, "admin", "Admin123!")
+
+    allowed = client.get(
+        "/api/download/report/secret.md",
+        headers=_auth(owner_tok["access_token"]),
+    )
+    assert allowed.status_code == 200
+    assert allowed.content == b"owner-secret"
+
+    # Non-owner analyst → 404 (do not leak existence)
+    denied_other = client.get(
+        "/api/download/report/secret.md",
+        headers=_auth(other_tok["access_token"]),
+    )
+    assert denied_other.status_code == 404
+
+    # Admin must NOT bypass ownership by default
+    denied_admin = client.get(
+        "/api/download/report/secret.md",
+        headers=_auth(admin_tok["access_token"]),
+    )
+    assert denied_admin.status_code == 404
+
+
+def test_report_download_rejects_path_traversal(client, tmp_path, monkeypatch):
+    report_root = tmp_path / "reports"
+    monkeypatch.setattr(
+        "openchatbi.config.get",
+        lambda: type("Cfg", (), {"report_directory": str(report_root)})(),
+    )
+
+    client.post("/api/auth/bootstrap", json={"username": "admin", "password": "Admin123!"})
+    owner_id = _create_user("owner2", "Owner123!", Role.analyst.value)
+    owner_dir = report_root / owner_id
+    owner_dir.mkdir(parents=True)
+    (owner_dir / "ok.md").write_text("ok", encoding="utf-8")
+
+    # Plant a file outside the user dir that traversal might try to reach
+    (report_root / "escaped.md").write_text("nope", encoding="utf-8")
+
+    owner_tok = _password_token(client, "owner2", "Owner123!")
+    r = client.get(
+        "/api/download/report/../escaped.md",
+        headers=_auth(owner_tok["access_token"]),
+    )
+    assert r.status_code in (400, 404)
