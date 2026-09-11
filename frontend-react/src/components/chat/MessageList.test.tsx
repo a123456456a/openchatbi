@@ -24,7 +24,7 @@ function step(partial: Partial<ChatStep> & Pick<ChatStep, 'id' | 'kind'>): ChatS
 }
 
 describe('MessageList tool body', () => {
-  it('shows full tool results in the answer body and collapses the tool panel', () => {
+  it('shows only the final answer body: no thinking, no process/tool-call panels', () => {
     const messages: ChatMessage[] = [
       {
         id: 'a1',
@@ -46,13 +46,16 @@ describe('MessageList tool body', () => {
 
     render(<MessageList messages={messages} />)
 
+    // Final answer body and inline tool results (charts/files/text) are shown.
     expect(screen.getByText('订单总数是 1234')).toBeVisible()
     expect(screen.getByText("[{'total': 1234}]")).toBeVisible()
-    expect(screen.getByText('SELECT COUNT(*)')).toBeVisible()
-    expect(screen.queryByText('Using tool: text2sql')).not.toBeInTheDocument()
 
-    expect(screen.getByRole('button', { name: /生成 SQL/ })).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByRole('button', { name: /^text2sql$/ })).toHaveAttribute('aria-expanded', 'false')
+    // Thinking and intermediate process steps (SQL, tool-call invocations) are not rendered.
+    expect(screen.queryByText('先查一下')).not.toBeInTheDocument()
+    expect(screen.queryByText('SELECT COUNT(*)')).not.toBeInTheDocument()
+    expect(screen.queryByText('Using tool: text2sql')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /生成 SQL/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^text2sql$/ })).not.toBeInTheDocument()
   })
 
   it('renders a visualization step as an inline chart, not inside the collapsed process panel', () => {
