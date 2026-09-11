@@ -31,10 +31,10 @@ export default function SidebarFooter() {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-200 hover:bg-slate-50"
+            className="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-200 hover:bg-[var(--color-muted)]/70"
           >
-            <Avatar className="h-[30px] w-[30px] shrink-0 bg-[var(--color-primary)]">
-              <AvatarFallback className="bg-[var(--color-primary)] text-white">
+            <Avatar className="h-[30px] w-[30px] shrink-0 shadow-sm">
+              <AvatarFallback className="text-white" style={{ background: 'var(--gradient-brand)' }}>
                 <UserRound size={16} />
               </AvatarFallback>
             </Avatar>
