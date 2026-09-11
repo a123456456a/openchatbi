@@ -1,8 +1,19 @@
 import { Bot, Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 
-import { assistantCopyText, processSteps, toolBodyText, toolSteps } from '@/lib/chatSteps'
-import type { ChatMessage } from '@/types/stream'
+import {
+  assistantCopyText,
+  extractFileDownload,
+  fileResultSteps,
+  nonFileToolSteps,
+  processSteps,
+  toolBodyText,
+  toolSteps,
+  visualizationSteps,
+} from '@/lib/chatSteps'
+import type { ChatMessage, ChatStep } from '@/types/stream'
+import ChartView from './ChartView'
+import FileDownloadCard from './FileDownloadCard'
 import Markdown from '../common/Markdown'
 import StepCollapse from './StepCollapse'
 import ThinkingCollapse from './ThinkingCollapse'
@@ -33,6 +44,20 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+function visualizationDsl(step: ChatStep): Record<string, unknown> {
+  const dsl = step.data?.visualization_dsl
+  return dsl && typeof dsl === 'object' ? (dsl as Record<string, unknown>) : {}
+}
+
+function csvData(step: ChatStep): string | undefined {
+  const data = step.data?.data
+  return typeof data === 'string' ? data : undefined
+}
+
+function hasInlineArtifacts(m: ChatMessage): boolean {
+  return Boolean(m.content) || toolSteps(m.steps).length > 0 || visualizationSteps(m.steps).length > 0
+}
+
 export default function MessageList({ messages }: { messages: ChatMessage[] }) {
   return (
     <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
@@ -54,10 +79,23 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
               <ThinkingCollapse thinking={m.thinking} streaming={m.streaming} />
               <StepCollapse steps={processSteps(m.steps)} />
 
-              {m.content || toolSteps(m.steps).length > 0 ? (
+              {/* Main answer body: LLM text, then any tool-generated artifacts (charts, files,
+                  raw tool results) rendered inline and in reading order — not hidden in a
+                  collapsed "step" panel. */}
+              {hasInlineArtifacts(m) ? (
                 <div className="space-y-3 text-sm text-slate-800">
                   {m.content ? <Markdown text={m.content} /> : null}
-                  {toolSteps(m.steps).map((s) => (
+
+                  {visualizationSteps(m.steps).map((s) => (
+                    <ChartView key={s.id} visualizationDsl={visualizationDsl(s)} csvData={csvData(s)} />
+                  ))}
+
+                  {fileResultSteps(m.steps).map((s) => {
+                    const file = extractFileDownload(s)
+                    return file ? <FileDownloadCard key={s.id} {...file} /> : null
+                  })}
+
+                  {nonFileToolSteps(m.steps).map((s) => (
                     <Markdown key={s.id} text={toolBodyText(s)} />
                   ))}
                 </div>
@@ -67,10 +105,10 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
                 )
               )}
 
-              <StepCollapse steps={toolSteps(m.steps)} defaultOpen={false} />
+              <StepCollapse steps={nonFileToolSteps(m.steps)} defaultOpen={false} />
             </div>
 
-            {!m.streaming && (m.content || toolSteps(m.steps).length > 0) && (
+            {!m.streaming && hasInlineArtifacts(m) && (
               <div className="mt-1.5 flex items-center gap-1">
                 <CopyButton text={assistantCopyText(m.content, m.steps)} />
               </div>

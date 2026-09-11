@@ -103,6 +103,41 @@ body {
   }
 }
 
+/* Mermaid diagrams and ECharts blocks embedded in markdown answers. */
+.prose-chat pre.mermaid {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+.prose-chat .echarts-block {
+  min-height: 360px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  margin: 0.5rem 0;
+}
+.prose-chat .echarts-block-fallback,
+.prose-chat .echarts-block-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 360px;
+  color: var(--color-muted-foreground);
+  font-size: 0.75rem;
+}
+.prose-chat .task-list-item {
+  list-style: none;
+  margin-left: -1.4em;
+}
+.prose-chat .task-list-item input[type='checkbox'] {
+  margin-right: 0.4em;
+}
+
 /* Inverted palette for markdown rendered on a solid primary background (user bubble). */
 @utility prose-chat-invert {
   --tw-prose-body: var(--color-on-primary);

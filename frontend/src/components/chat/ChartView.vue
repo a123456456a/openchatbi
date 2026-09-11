@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Chart, type ChartConfiguration } from 'chart.js/auto'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import echarts, { type ECharts } from '../../lib/echartsSetup'
+
 import DataTable from '../common/DataTable.vue'
-import { buildChartConfig, computeBoxStats } from '../../lib/chartConfig'
+import { buildChartConfig } from '../../lib/chartConfig'
 import { parseCsv } from '../../lib/csv'
 
 const props = defineProps<{
@@ -11,8 +12,9 @@ const props = defineProps<{
   csvData?: string
 }>()
 
-const canvasRef = ref<HTMLCanvasElement | null>(null)
-let chartInstance: Chart | null = null
+const chartRef = ref<HTMLDivElement | null>(null)
+let chartInstance: ECharts | null = null
+let resizeObserver: ResizeObserver | null = null
 
 const parsed = computed(() => parseCsv(props.csvData ?? ''))
 const chartType = computed(() => String(props.visualizationDsl.chart_type ?? 'table'))
@@ -26,30 +28,28 @@ const errorMsg = computed(() => {
   return typeof cfgError === 'string' ? cfgError : undefined
 })
 
-const boxStats = computed(() =>
-  chartType.value === 'box' ? computeBoxStats(config.value, parsed.value) : null,
-)
-
-const chartConfig = computed<ChartConfiguration | null>(() => {
-  if (chartType.value === 'table' || chartType.value === 'box') return null
+const chartOption = computed(() => {
+  if (chartType.value === 'table') return null
   return buildChartConfig(chartType.value, config.value, layout.value, parsed.value)
 })
 
 function renderChart() {
-  chartInstance?.destroy()
-  chartInstance = null
-  if (chartConfig.value && canvasRef.value) {
-    chartInstance = new Chart(canvasRef.value, chartConfig.value)
+  if (!chartOption.value) return
+  if (!chartInstance && chartRef.value) {
+    chartInstance = echarts.init(chartRef.value)
+    resizeObserver = new ResizeObserver(() => chartInstance?.resize())
+    resizeObserver.observe(chartRef.value)
   }
+  chartInstance?.setOption(chartOption.value, true)
 }
 
-// The template ref isn't bound yet when an `immediate` watcher's callback
-// would first run, so render once on mount and re-render on later changes.
 onMounted(renderChart)
-watch(chartConfig, renderChart, { flush: 'post' })
+watch(chartOption, renderChart, { flush: 'post' })
 
 onBeforeUnmount(() => {
-  chartInstance?.destroy()
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  chartInstance?.dispose()
   chartInstance = null
 })
 </script>
@@ -58,12 +58,9 @@ onBeforeUnmount(() => {
   <div v-if="errorMsg" class="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
     ⚠️ 可视化生成失败：{{ errorMsg }}
   </div>
-  <DataTable v-else-if="chartType === 'box'" :title="title ?? '统计摘要'" :columns="boxStats?.columns ?? []" :rows="boxStats?.rows ?? []" />
-  <DataTable v-else-if="!chartConfig" :title="title" :columns="parsed.columns" :rows="parsed.rows" />
-  <div v-else class="mt-2 rounded-lg border border-[var(--color-border)] bg-white p-3">
+  <DataTable v-else-if="!chartOption" :title="title" :columns="parsed.columns" :rows="parsed.rows" />
+  <div v-else class="mt-2 rounded-lg border border-[var(--color-border)] bg-white p-3 shadow-[var(--shadow-card)]">
     <div v-if="title" class="mb-2 text-xs font-medium text-slate-700">{{ title }}</div>
-    <div class="relative h-64 w-full">
-      <canvas ref="canvasRef"></canvas>
-    </div>
+    <div ref="chartRef" class="h-72 w-full"></div>
   </div>
 </template>

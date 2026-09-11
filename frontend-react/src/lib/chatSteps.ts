@@ -6,6 +6,10 @@ export const HIDDEN_STEP_KINDS = new Set(['tool', 'tool_call', 'sub_agent'])
 /** Tool outcome steps: shown collapsed after the final answer body. */
 export const TOOL_STEP_KINDS = new Set(['tool_result', 'tool_error'])
 
+/** Matches the fixed `save_report` success message so a download card can be rendered from it,
+ * regardless of which tool produced it (see `openchatbi/tool/save_report.py`). */
+const DOWNLOAD_LINK_RE = /Download link:\s*(\/api\/download\/report\/([^\s)]+))/
+
 export function isHiddenStep(step: ChatStep): boolean {
   return HIDDEN_STEP_KINDS.has(step.kind)
 }
@@ -14,14 +18,55 @@ export function isToolStep(step: ChatStep): boolean {
   return TOOL_STEP_KINDS.has(step.kind)
 }
 
-/** SQL / visualization / tables / … — intermediate process, stay above the body. */
-export function processSteps(steps: ChatStep[]): ChatStep[] {
-  return steps.filter((s) => !isHiddenStep(s) && !isToolStep(s))
+export function isVisualizationStep(step: ChatStep): boolean {
+  return step.kind === 'visualization'
 }
 
-/** Successful or failed tool results — rendered in the body and as a collapsed panel. */
+export interface FileDownload {
+  url: string
+  filename: string
+  ext: string
+}
+
+/** Extract a generated-file download link from a tool result, or `null` if it has none. */
+export function extractFileDownload(step: ChatStep): FileDownload | null {
+  if (!isToolStep(step)) return null
+  const text = toolBodyText(step)
+  const match = DOWNLOAD_LINK_RE.exec(text)
+  if (!match) return null
+  const [, url, filename] = match
+  const ext = filename.includes('.') ? filename.split('.').pop() ?? '' : ''
+  return { url, filename, ext }
+}
+
+export function isFileResultStep(step: ChatStep): boolean {
+  return extractFileDownload(step) !== null
+}
+
+/** SQL / tables / rewrite / confidence — intermediate process, stays in the collapsed "过程" panel above the body.
+ * Visualization and file-download results are excluded: they render inline in the main body instead. */
+export function processSteps(steps: ChatStep[]): ChatStep[] {
+  return steps.filter((s) => !isHiddenStep(s) && !isToolStep(s) && !isVisualizationStep(s))
+}
+
+/** Visualization steps — rendered inline in the answer body as charts/tables, not in a collapsed panel. */
+export function visualizationSteps(steps: ChatStep[]): ChatStep[] {
+  return steps.filter(isVisualizationStep)
+}
+
+/** Successful or failed tool results — rendered in the body and (non-file ones) again as a collapsed panel. */
 export function toolSteps(steps: ChatStep[]): ChatStep[] {
   return steps.filter((s) => isToolStep(s))
+}
+
+/** File-producing tool results (e.g. `save_report`) — rendered inline as a download card. */
+export function fileResultSteps(steps: ChatStep[]): ChatStep[] {
+  return steps.filter((s) => isToolStep(s) && isFileResultStep(s))
+}
+
+/** Non-file tool results — rendered inline as markdown text, and again in the collapsed panel below. */
+export function nonFileToolSteps(steps: ChatStep[]): ChatStep[] {
+  return steps.filter((s) => isToolStep(s) && !isFileResultStep(s))
 }
 
 /** Full tool payload for the answer body (prefers `data.result` / `data.error` over the truncated preview). */

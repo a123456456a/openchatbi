@@ -1,19 +1,13 @@
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { isToolStep, stepTitle, toolBodyText } from '@/lib/chatSteps'
 import type { ChatStep } from '@/types/stream'
-import ChartView from './ChartView'
 import Markdown from '../common/Markdown'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 function StepItem({ step, defaultOpen }: { step: ChatStep; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
-  const visualizationDsl =
-    step.kind === 'visualization' && step.data?.visualization_dsl
-      ? (step.data.visualization_dsl as Record<string, unknown>)
-      : null
-  const csvData = step.kind === 'visualization' ? (step.data?.data as string | undefined) : undefined
   const body = isToolStep(step) ? toolBodyText(step) : step.text
 
   return (
@@ -30,11 +24,6 @@ function StepItem({ step, defaultOpen }: { step: ChatStep; defaultOpen: boolean 
         <div className="px-3 pb-3 text-slate-600">
           <Markdown text={body} className="text-xs leading-relaxed" />
         </div>
-        {visualizationDsl && (
-          <div className="px-3 pb-3">
-            <ChartView visualizationDsl={visualizationDsl} csvData={csvData} />
-          </div>
-        )}
       </CollapsibleContent>
     </Collapsible>
   )

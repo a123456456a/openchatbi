@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
-import ChartView from './ChartView.vue'
 import Markdown from '../common/Markdown.vue'
 import { isToolStep, stepTitle, toolBodyText } from '../../lib/chatSteps'
 import type { ChatStep } from '../../types/stream'
@@ -32,18 +31,6 @@ watch(
   { immediate: true },
 )
 
-function visualizationDsl(step: ChatStep): Record<string, unknown> | null {
-  if (step.kind !== 'visualization') return null
-  const dsl = step.data?.visualization_dsl
-  return dsl && typeof dsl === 'object' ? (dsl as Record<string, unknown>) : null
-}
-
-function csvData(step: ChatStep): string | undefined {
-  if (step.kind !== 'visualization') return undefined
-  const data = step.data?.data
-  return typeof data === 'string' ? data : undefined
-}
-
 function bodyText(step: ChatStep): string {
   return isToolStep(step) ? toolBodyText(step) : step.text
 }
@@ -61,7 +48,6 @@ function bodyText(step: ChatStep): string {
         <div class="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
           <Markdown :text="bodyText(s)" class="text-xs leading-relaxed" />
         </div>
-        <ChartView v-if="visualizationDsl(s)" :visualization-dsl="visualizationDsl(s)!" :csv-data="csvData(s)" />
       </el-collapse-item>
     </el-collapse>
   </div>

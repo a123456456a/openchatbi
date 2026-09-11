@@ -1,54 +1,33 @@
-import type { ChartConfiguration, ChartOptions } from 'chart.js'
-
+import type { EChartsOption } from '@/lib/echartsSetup'
 import { toNumber, type ParsedCsv } from '@/lib/csv'
 
-export const CHART_PALETTE = [
-  '#0f766e',
-  '#d97706',
-  '#2563eb',
-  '#db2777',
-  '#7c3aed',
-  '#059669',
-  '#dc2626',
-  '#0891b2',
-]
+export const CHART_PALETTE = ['#1e40af', '#d97706', '#0f766e', '#db2777', '#7c3aed', '#059669', '#dc2626', '#0891b2']
 
 export function colorAt(i: number): string {
   return CHART_PALETTE[i % CHART_PALETTE.length]
 }
 
-function withAlpha(hex: string, alpha: string): string {
-  return `${hex}${alpha}`
+function baseGrid() {
+  return { left: 48, right: 24, top: 48, bottom: 40, containLabel: true }
 }
 
-function baseOptions(xTitle?: string, yTitle?: string, showLegend?: boolean): ChartOptions {
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
-    plugins: {
-      legend: { display: !!showLegend, position: 'top' },
-    },
-    scales: {
-      x: { title: { display: !!xTitle, text: xTitle ?? '' } },
-      y: { title: { display: !!yTitle, text: yTitle ?? '' } },
-    },
-  }
+function axisTitleOpt(title?: string) {
+  return title ? { name: title, nameLocation: 'middle' as const, nameGap: 28 } : {}
 }
 
 /**
- * Build a Chart.js configuration from the backend's `visualization_dsl`
+ * Build an ECharts `option` from the backend's `visualization_dsl`
  * (see `openchatbi/text2sql/visualization.py`) plus the parsed CSV rows for
- * the chart types Chart.js can render natively. Returns `null` for chart
- * types that need a different presentation (e.g. `table`, `box`) so callers
- * can fall back to a data table.
+ * the chart types ECharts can render natively. Returns `null` for chart
+ * types that need a different presentation (currently only `table`) so
+ * callers can fall back to a data table.
  */
 export function buildChartConfig(
   chartType: string,
   config: Record<string, unknown>,
   layout: Record<string, unknown>,
   parsed: ParsedCsv,
-): ChartConfiguration | null {
+): EChartsOption | null {
   const xTitle = typeof layout.xaxis_title === 'string' ? layout.xaxis_title : undefined
   const yTitle = typeof layout.yaxis_title === 'string' ? layout.yaxis_title : undefined
 
@@ -61,19 +40,21 @@ export function buildChartConfig(
       const yRaw = config.y
       const yCols = Array.isArray(yRaw) ? yRaw.map(String) : yRaw != null ? [String(yRaw)] : []
       if (!xCol || yCols.length === 0) return null
-      const labels = parsed.rows.map((r) => r[xCol] ?? '')
-      const datasets = yCols.map((col, i) => ({
-        label: col,
-        data: parsed.rows.map((r) => toNumber(r[col])),
-        borderColor: colorAt(i),
-        backgroundColor: chartType === 'line' ? withAlpha(colorAt(i), '33') : withAlpha(colorAt(i), 'cc'),
-        tension: chartType === 'line' ? 0.3 : 0,
-        fill: false,
-      }))
+      const categories = parsed.rows.map((r) => r[xCol] ?? '')
       return {
-        type: chartType,
-        data: { labels, datasets },
-        options: baseOptions(xTitle ?? xCol, yTitle, yCols.length > 1),
+        color: CHART_PALETTE,
+        grid: baseGrid(),
+        tooltip: { trigger: 'axis' },
+        legend: yCols.length > 1 ? { top: 0 } : undefined,
+        xAxis: { type: 'category', data: categories, ...axisTitleOpt(xTitle ?? xCol) },
+        yAxis: { type: 'value', ...axisTitleOpt(yTitle) },
+        series: yCols.map((col) => ({
+          name: col,
+          type: chartType,
+          data: parsed.rows.map((r) => toNumber(r[col])),
+          smooth: chartType === 'line',
+          areaStyle: chartType === 'line' ? { opacity: 0.12 } : undefined,
+        })),
       }
     }
 
@@ -81,19 +62,19 @@ export function buildChartConfig(
       const labelsCol = String(config.labels ?? parsed.columns[0] ?? '')
       const valuesCol = String(config.values ?? parsed.columns[1] ?? '')
       if (!labelsCol || !valuesCol) return null
-      const labels = parsed.rows.map((r) => r[labelsCol] ?? '')
-      const data = parsed.rows.map((r) => toNumber(r[valuesCol]))
       return {
-        type: 'pie',
-        data: {
-          labels,
-          datasets: [{ data, backgroundColor: labels.map((_, i) => colorAt(i)) }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: true, position: 'right' } },
-        },
+        color: CHART_PALETTE,
+        tooltip: { trigger: 'item' },
+        legend: { orient: 'vertical', right: 8, top: 'middle' },
+        series: [
+          {
+            type: 'pie',
+            radius: ['35%', '70%'],
+            center: ['40%', '50%'],
+            data: parsed.rows.map((r) => ({ name: r[labelsCol] ?? '', value: toNumber(r[valuesCol]) })),
+            label: { formatter: '{b}: {d}%' },
+          },
+        ],
       }
     }
 
@@ -102,15 +83,16 @@ export function buildChartConfig(
       const yCol = String(config.y ?? parsed.columns[1] ?? '')
       if (!xCol || !yCol) return null
       const points = parsed.rows
-        .map((r) => ({ x: toNumber(r[xCol]), y: toNumber(r[yCol]) }))
-        .filter((p) => !Number.isNaN(p.x) && !Number.isNaN(p.y))
+        .map((r) => [toNumber(r[xCol]), toNumber(r[yCol])])
+        .filter(([x, y]) => !Number.isNaN(x) && !Number.isNaN(y))
       if (points.length === 0) return null
       return {
-        type: 'scatter',
-        data: {
-          datasets: [{ label: `${yCol} vs ${xCol}`, data: points, backgroundColor: colorAt(0) }],
-        },
-        options: baseOptions(xTitle ?? xCol, yTitle ?? yCol, false),
+        color: CHART_PALETTE,
+        grid: baseGrid(),
+        tooltip: { trigger: 'item' },
+        xAxis: { type: 'value', ...axisTitleOpt(xTitle ?? xCol) },
+        yAxis: { type: 'value', ...axisTitleOpt(yTitle ?? yCol) },
+        series: [{ name: `${yCol} vs ${xCol}`, type: 'scatter', data: points, symbolSize: 8 }],
       }
     }
 
@@ -136,9 +118,68 @@ export function buildChartConfig(
         return `${from.toFixed(1)}–${to.toFixed(1)}`
       })
       return {
-        type: 'bar',
-        data: { labels, datasets: [{ label: `${col} 频次`, data: counts, backgroundColor: colorAt(0) }] },
-        options: baseOptions(xTitle ?? col, yTitle ?? '频次', false),
+        color: CHART_PALETTE,
+        grid: baseGrid(),
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: labels, ...axisTitleOpt(xTitle ?? col) },
+        yAxis: { type: 'value', ...axisTitleOpt(yTitle ?? '频次') },
+        series: [{ name: `${col} 频次`, type: 'bar', data: counts }],
+      }
+    }
+
+    case 'box': {
+      const yCol = String(config.y ?? parsed.columns[parsed.columns.length - 1] ?? '')
+      const xCol = config.x ? String(config.x) : undefined
+      if (!yCol) return null
+      const groups = new Map<string, number[]>()
+      parsed.rows.forEach((r) => {
+        const key = xCol ? r[xCol] ?? '' : '全部'
+        const v = toNumber(r[yCol])
+        if (Number.isNaN(v)) return
+        const bucket = groups.get(key)
+        if (bucket) bucket.push(v)
+        else groups.set(key, [v])
+      })
+      if (groups.size === 0) return null
+      const categories = [...groups.keys()]
+      const data = categories.map((key) => boxplotStats([...(groups.get(key) ?? [])].sort((a, b) => a - b)))
+      return {
+        color: CHART_PALETTE,
+        grid: baseGrid(),
+        tooltip: { trigger: 'item' },
+        xAxis: { type: 'category', data: categories, ...axisTitleOpt(xTitle ?? xCol) },
+        yAxis: { type: 'value', ...axisTitleOpt(yTitle ?? yCol) },
+        series: [{ name: yCol, type: 'boxplot', data }],
+      }
+    }
+
+    case 'heatmap': {
+      const xCol = String(config.x ?? parsed.columns[0] ?? '')
+      const yCol = String(config.y ?? parsed.columns[1] ?? '')
+      const valueCol = String(config.z ?? config.value ?? parsed.columns[2] ?? '')
+      if (!xCol || !yCol || !valueCol) return null
+      const xCats = [...new Set(parsed.rows.map((r) => r[xCol] ?? ''))]
+      const yCats = [...new Set(parsed.rows.map((r) => r[yCol] ?? ''))]
+      const data = parsed.rows.map((r) => [
+        xCats.indexOf(r[xCol] ?? ''),
+        yCats.indexOf(r[yCol] ?? ''),
+        toNumber(r[valueCol]),
+      ])
+      const values = data.map((d) => d[2]).filter((v) => !Number.isNaN(v))
+      return {
+        grid: baseGrid(),
+        tooltip: { position: 'top' },
+        xAxis: { type: 'category', data: xCats, splitArea: { show: true }, ...axisTitleOpt(xTitle ?? xCol) },
+        yAxis: { type: 'category', data: yCats, splitArea: { show: true }, ...axisTitleOpt(yTitle ?? yCol) },
+        visualMap: {
+          min: values.length ? Math.min(...values) : 0,
+          max: values.length ? Math.max(...values) : 1,
+          calculable: true,
+          orient: 'horizontal',
+          left: 'center',
+          bottom: 0,
+        },
+        series: [{ name: valueCol, type: 'heatmap', data, label: { show: true } }],
       }
     }
 
@@ -158,16 +199,23 @@ function quantile(sorted: number[], q: number): number {
   return sorted[base]
 }
 
+/** `[min, Q1, median, Q3, max]` — the shape ECharts' `boxplot` series expects per category. */
+function boxplotStats(sortedValues: number[]): [number, number, number, number, number] {
+  return [
+    quantile(sortedValues, 0),
+    quantile(sortedValues, 0.25),
+    quantile(sortedValues, 0.5),
+    quantile(sortedValues, 0.75),
+    quantile(sortedValues, 1),
+  ]
+}
+
 function formatStat(n: number): string {
   if (Number.isNaN(n)) return '-'
   return Number.isInteger(n) ? String(n) : n.toFixed(2)
 }
 
-/**
- * Chart.js has no first-party box-plot chart type; render box-chart DSLs as
- * a summary-statistics table (min / Q1 / median / Q3 / max per group) instead
- * of faking a box plot with mismatched primitives.
- */
+/** Summary-statistics table (min / Q1 / median / Q3 / max per group) — used as a "view as table" fallback. */
 export function computeBoxStats(
   config: Record<string, unknown>,
   parsed: ParsedCsv,

@@ -1,8 +1,16 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { ChatMessage, ChatStep } from '@/types/stream'
 import MessageList from './MessageList'
+
+// jsdom has no canvas 2D context, so ECharts can't actually paint in tests; stub the chart
+// widget here (chart building/rendering logic itself is covered by chartConfig.test.ts).
+vi.mock('./ChartView', () => ({
+  default: ({ visualizationDsl }: { visualizationDsl: Record<string, unknown> }) => (
+    <div data-testid="chart-view">{(visualizationDsl.layout as { title?: string } | undefined)?.title}</div>
+  ),
+}))
 
 function step(partial: Partial<ChatStep> & Pick<ChatStep, 'id' | 'kind'>): ChatStep {
   return {
@@ -45,5 +53,65 @@ describe('MessageList tool body', () => {
 
     expect(screen.getByRole('button', { name: /生成 SQL/ })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('button', { name: /^text2sql$/ })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('renders a visualization step as an inline chart, not inside the collapsed process panel', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'a2',
+        role: 'assistant',
+        content: '这是按地区的销售额',
+        thinking: '',
+        steps: [
+          step({
+            id: 'v1',
+            kind: 'visualization',
+            text: '📊 Generated visualization',
+            data: {
+              visualization_dsl: { chart_type: 'bar', config: { x: 'region', y: 'revenue' }, layout: { title: '销售额' } },
+              data: 'region,revenue\nEast,10\nWest,20',
+            },
+          }),
+        ],
+      },
+    ]
+
+    render(<MessageList messages={messages} />)
+
+    expect(screen.getByText('这是按地区的销售额')).toBeVisible()
+    expect(screen.getByText('销售额')).toBeVisible()
+    // The chart is inline in the body, not tucked away inside a "过程" collapse trigger.
+    expect(screen.queryByRole('button', { name: /Generated visualization/ })).not.toBeInTheDocument()
+  })
+
+  it('renders a save_report tool result as an inline download card, not a raw link', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'a3',
+        role: 'assistant',
+        content: '报告已生成',
+        thinking: '',
+        steps: [
+          step({
+            id: 't2',
+            kind: 'tool_result',
+            text: 'preview',
+            data: {
+              tool: 'save_report',
+              result: 'Report saved successfully! Download link: /api/download/report/20260101_Sales.docx',
+            },
+          }),
+        ],
+      },
+    ]
+
+    render(<MessageList messages={messages} />)
+
+    expect(screen.getByText('20260101_Sales.docx')).toBeVisible()
+    expect(screen.getByText(/Word 文档/)).toBeVisible()
+    expect(screen.getByRole('button', { name: /下载/ })).toBeVisible()
+    expect(screen.queryByText(/Download link:/)).not.toBeInTheDocument()
+    // Already shown as a card in the body, so it shouldn't be duplicated in the bottom tool panel.
+    expect(screen.queryByRole('button', { name: /save_report/ })).not.toBeInTheDocument()
   })
 })

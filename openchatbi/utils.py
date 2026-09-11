@@ -123,6 +123,8 @@ def get_report_download_response(filename: str) -> FileResponse:
             ".json": "application/json",
             ".html": "text/html",
             ".xml": "application/xml",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }
 
         file_extension = file_path.suffix.lower()

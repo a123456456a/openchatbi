@@ -17,10 +17,38 @@ describe('renderMarkdown', () => {
     expect(html).toContain('<td>1</td>')
   })
 
-  it('renders fenced code blocks', () => {
+  it('renders fenced code blocks with syntax highlighting', () => {
     const html = renderMarkdown('```sql\nSELECT 1;\n```')
-    expect(html).toContain('<pre>')
-    expect(html).toContain('SELECT 1;')
+    expect(html).toContain('<pre class="hljs">')
+    expect(html).toContain('SELECT')
+  })
+
+  it('renders GFM task lists as checkboxes', () => {
+    const html = renderMarkdown('- [x] done\n- [ ] todo')
+    expect(html).toContain('type="checkbox"')
+    expect(html).toContain('checked')
+  })
+
+  it('renders inline math via KaTeX', () => {
+    const html = renderMarkdown('energy: $E=mc^2$')
+    expect(html).toContain('class="katex"')
+  })
+
+  it('renders ==marked== text', () => {
+    const html = renderMarkdown('==highlighted==')
+    expect(html).toContain('<mark>highlighted</mark>')
+  })
+
+  it('renders a mermaid fence as a live-diagram placeholder', () => {
+    const html = renderMarkdown('```mermaid\ngraph TD; A-->B;\n```')
+    expect(html).toContain('class="mermaid"')
+    expect(html).toContain('graph TD')
+  })
+
+  it('renders an echarts fence as a chart placeholder with an encoded option payload', () => {
+    const html = renderMarkdown('```echarts\n{"series":[{"type":"bar","data":[1,2,3]}]}\n```')
+    expect(html).toContain('class="echarts-block"')
+    expect(html).toContain('data-option="')
   })
 
   it('turns single newlines into <br> (breaks mode)', () => {
