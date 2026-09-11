@@ -4,6 +4,7 @@ import { ChatDotRound, Delete, MoreFilled, Plus, RefreshLeft, Search } from '@el
 import { ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
+import DemoWarehouseBanner from '../common/DemoWarehouseBanner.vue'
 import SettingsDialog from './SettingsDialog.vue'
 import SidebarFooter from './SidebarFooter.vue'
 import { useSessionsStore, type SessionMeta } from '../../stores/sessions'
@@ -80,6 +81,7 @@ async function confirmDelete(id: string) {
 
 <template>
   <div class="h-screen flex overflow-hidden bg-[var(--color-background)]">
+    <DemoWarehouseBanner />
     <aside
       class="w-64 shrink-0 flex flex-col border-r border-[var(--color-border)] bg-[var(--color-card)]"
     >
