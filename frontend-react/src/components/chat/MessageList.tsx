@@ -6,7 +6,6 @@ import {
   extractFileDownload,
   fileResultSteps,
   nonFileToolSteps,
-  processSteps,
   toolBodyText,
   toolSteps,
   visualizationSteps,
@@ -15,8 +14,6 @@ import type { ChatMessage, ChatStep } from '@/types/stream'
 import ChartView from './ChartView'
 import FileDownloadCard from './FileDownloadCard'
 import Markdown from '../common/Markdown'
-import StepCollapse from './StepCollapse'
-import ThinkingCollapse from './ThinkingCollapse'
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
@@ -76,9 +73,6 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
             </div>
 
             <div className="space-y-2.5">
-              <ThinkingCollapse thinking={m.thinking} streaming={m.streaming} />
-              <StepCollapse steps={processSteps(m.steps)} />
-
               {/* Main answer body: LLM text, then any tool-generated artifacts (charts, files,
                   raw tool results) rendered inline and in reading order — not hidden in a
                   collapsed "step" panel. */}
@@ -104,8 +98,6 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
                   <div className="text-sm text-[var(--color-muted-foreground)]">思考中…</div>
                 )
               )}
-
-              <StepCollapse steps={nonFileToolSteps(m.steps)} defaultOpen={false} />
             </div>
 
             {!m.streaming && hasInlineArtifacts(m) && (
