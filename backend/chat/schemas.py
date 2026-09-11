@@ -10,3 +10,8 @@ class ChatStreamRequest(BaseModel):
     session_id: str = "default"
     provider: str | None = None
     mode: Literal["events", "text"] | None = "events"
+
+
+class AbortInterruptResponse(BaseModel):
+    aborted: bool
+    had_interrupt: bool

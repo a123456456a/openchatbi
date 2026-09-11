@@ -329,3 +329,88 @@ def test_factory_value_error_surfaces_to_client(client):
     assert r.status_code == 400
     assert r.json()["detail"] == factory_error
     assert "请先在设置中配置模型" not in r.json()["detail"]
+
+
+def test_abort_interrupt_clears_paused_thread(client):
+    tok = _bootstrap_admin(client)
+    _put_deepseek(client, tok["access_token"])
+
+    interrupt = MagicMock()
+    interrupt.value = {"text": "Approve?", "buttons": ["approve"]}
+    state_with_interrupt = MagicMock()
+    state_with_interrupt.interrupts = [interrupt]
+    state_cleared = MagicMock()
+    state_cleared.interrupts = []
+
+    checkpointer = AsyncMock()
+    mock_graph = MagicMock()
+    mock_graph.checkpointer = checkpointer
+    mock_graph.aget_state = AsyncMock(side_effect=[state_with_interrupt, state_cleared])
+
+    with (
+        patch("backend.chat.routes.build_chat_model", return_value=MagicMock()),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock(return_value=mock_graph)),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+    ):
+        aborted = client.post(
+            "/api/chat/sessions/s1/abort-interrupt",
+            headers=_auth(tok["access_token"]),
+        )
+        assert aborted.status_code == 200
+        assert aborted.json() == {"aborted": True, "had_interrupt": True}
+        checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+
+        noop = client.post(
+            "/api/chat/sessions/s1/abort-interrupt",
+            headers=_auth(tok["access_token"]),
+        )
+        assert noop.status_code == 200
+        assert noop.json() == {"aborted": False, "had_interrupt": False}
+
+
+def test_chat_starts_fresh_message_after_abort_not_resume(client):
+    """After aborting a paused interrupt, the next stream must not use Command(resume=...)."""
+    from langgraph.types import Command
+
+    tok = _bootstrap_admin(client)
+    _put_deepseek(client, tok["access_token"])
+
+    seen_inputs = []
+
+    async def fake_astream(stream_input, *_args, **_kwargs):
+        seen_inputs.append(stream_input)
+        if False:
+            yield None
+        return
+
+    state_cleared = MagicMock()
+    state_cleared.interrupts = []
+
+    mock_graph = MagicMock()
+    mock_graph.astream = fake_astream
+    mock_graph.aget_state = AsyncMock(return_value=state_cleared)
+    mock_graph.checkpointer = AsyncMock()
+
+    with (
+        patch("backend.chat.routes.build_chat_model", return_value=MagicMock()),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock(return_value=mock_graph)),
+        patch("backend.chat.routes.AgentStreamProcessor") as proc_cls,
+        patch("backend.chat.routes.extract_final_answer", return_value="ok"),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+    ):
+        proc = MagicMock()
+        proc.process.return_value = []
+        proc.emit_turn_usage.return_value = None
+        proc.final_response = "ok"
+        proc_cls.return_value = proc
+
+        r = client.post(
+            "/api/chat/stream",
+            headers=_auth(tok["access_token"]),
+            json={"input": "全新问题", "session_id": "s1", "mode": "events"},
+        )
+
+    assert r.status_code == 200
+    assert len(seen_inputs) == 1
+    assert not isinstance(seen_inputs[0], Command)
+    assert seen_inputs[0] == {"messages": [("user", "全新问题")]}

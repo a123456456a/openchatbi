@@ -13,6 +13,7 @@ from backend.warehouse.models import DataWarehouseConnection
 from backend.warehouse.schemas import (
     ConnectionIn,
     ConnectionOut,
+    ConnectionRuntimeApplyStatus,
     ConnectionUpdate,
     DialectCatalogItem,
     TestConnectionResult,
@@ -106,7 +107,9 @@ def create_connection(db: Session, body: ConnectionIn) -> DataWarehouseConnectio
     return row
 
 
-def update_connection(db: Session, connection_id: str, body: ConnectionUpdate) -> DataWarehouseConnection:
+def update_connection(
+    db: Session, connection_id: str, body: ConnectionUpdate
+) -> tuple[DataWarehouseConnection, ConnectionRuntimeApplyStatus | None]:
     row = get_connection(db, connection_id)
     fields = body.model_fields_set
 
@@ -152,9 +155,10 @@ def update_connection(db: Session, connection_id: str, body: ConnectionUpdate) -
 
     db.commit()
     db.refresh(row)
+    runtime_apply: ConnectionRuntimeApplyStatus | None = None
     if row.is_active:
-        _apply_connection_to_runtime(row)
-    return row
+        runtime_apply = _apply_connection_to_runtime(row)
+    return row, runtime_apply
 
 
 def delete_connection(db: Session, connection_id: str) -> None:
@@ -165,14 +169,14 @@ def delete_connection(db: Session, connection_id: str) -> None:
     db.commit()
 
 
-def activate_connection(db: Session, connection_id: str) -> DataWarehouseConnection:
+def activate_connection(db: Session, connection_id: str) -> tuple[DataWarehouseConnection, ConnectionRuntimeApplyStatus]:
     row = get_connection(db, connection_id)
     db.query(DataWarehouseConnection).filter(DataWarehouseConnection.id != row.id).update({"is_active": False})
     row.is_active = True
     db.commit()
     db.refresh(row)
-    _apply_connection_to_runtime(row)
-    return row
+    runtime_apply = _apply_connection_to_runtime(row)
+    return row, runtime_apply
 
 
 def _maybe_encrypt(plain: str | None) -> str | None:
@@ -189,7 +193,9 @@ def _decrypt(ciphertext: str | None) -> str | None:
         raise DecryptFailed() from exc
 
 
-def _apply_connection_to_runtime(row: DataWarehouseConnection, *, sync_schema: bool = True) -> None:
+def _apply_connection_to_runtime(
+    row: DataWarehouseConnection, *, sync_schema: bool = True
+) -> ConnectionRuntimeApplyStatus:
     """Best-effort: push the activated connection into the running openchatbi
     config/catalog store and drop cached agent graphs. Never raises -- if the
     openchatbi runtime config isn't loaded (e.g. tests, or config.yaml
@@ -201,6 +207,11 @@ def _apply_connection_to_runtime(row: DataWarehouseConnection, *, sync_schema: b
     indexes so leftover demo tables cannot linger. Startup re-apply keeps
     ``sync_schema=False`` to avoid wiping curated catalog edits on every boot.
     """
+    status = ConnectionRuntimeApplyStatus(
+        catalog_sync_status="skipped",
+        index_reload_status="skipped",
+        message=None,
+    )
     password = _decrypt(row.password_encrypted)
     token_password = _decrypt(row.token_password_encrypted)
     data_warehouse_config = build_data_warehouse_config(row, password=password, token_password=token_password)
@@ -220,22 +231,32 @@ def _apply_connection_to_runtime(row: DataWarehouseConnection, *, sync_schema: b
 
         if sync_schema:
             if sync_catalog_from_data_warehouse(cfg.catalog_store):
+                status.catalog_sync_status = "success"
                 try:
                     reload_catalog_indexes(cfg.catalog_store)
+                    status.index_reload_status = "success"
                 except Exception as exc:  # noqa: BLE001
+                    status.index_reload_status = "failed"
+                    status.message = str(exc)
                     logger.warning("Catalog synced but index reload failed: %s", exc)
             else:
-                logger.warning(
-                    "Activated connection %s but catalog schema sync failed; "
-                    "catalog may still describe the previous warehouse",
-                    row.name,
+                status.catalog_sync_status = "failed"
+                status.message = (
+                    f"Activated connection {row.name} but catalog schema sync failed; "
+                    "catalog may still describe the previous warehouse"
                 )
+                logger.warning(status.message)
     except Exception as exc:  # noqa: BLE001
+        if sync_schema:
+            status.catalog_sync_status = "failed"
+            status.index_reload_status = "skipped"
+            status.message = str(exc)
         logger.warning("Could not apply data warehouse connection to the running config: %s", exc)
     # Drop cached agent graphs regardless: the persisted active connection changed,
     # so any stale graph must not be served even if the live-apply above failed
     # (e.g. openchatbi config isn't loaded in this process yet).
     invalidate_all_graphs()
+    return status
 
 
 def apply_active_connection_on_startup(db: Session) -> None:
@@ -282,7 +303,10 @@ def _run_connection_test(data_warehouse_config: dict[str, Any]) -> TestConnectio
             engine.dispose()
 
 
-def to_connection_out(row: DataWarehouseConnection) -> ConnectionOut:
+def to_connection_out(
+    row: DataWarehouseConnection,
+    runtime_apply: ConnectionRuntimeApplyStatus | None = None,
+) -> ConnectionOut:
     return ConnectionOut(
         id=row.id,
         name=row.name,
@@ -301,6 +325,7 @@ def to_connection_out(row: DataWarehouseConnection) -> ConnectionOut:
         is_active=row.is_active,
         created_at=row.created_at.isoformat() if row.created_at else None,
         updated_at=row.updated_at.isoformat() if row.updated_at else None,
+        runtime_apply=runtime_apply,
     )
 
 

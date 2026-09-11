@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/api/chat', () => ({
   streamChat: vi.fn(),
+  abortChatInterrupt: vi.fn(),
 }))
 
-import { streamChat } from '@/api/chat'
+import { abortChatInterrupt, streamChat } from '@/api/chat'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import InterruptPrompt from './InterruptPrompt'
@@ -23,6 +24,8 @@ describe('InterruptPrompt', () => {
     })
     vi.mocked(streamChat).mockReset()
     vi.mocked(streamChat).mockResolvedValue(undefined)
+    vi.mocked(abortChatInterrupt).mockReset()
+    vi.mocked(abortChatInterrupt).mockResolvedValue({ aborted: true, had_interrupt: true })
   })
 
   afterEach(() => {
@@ -47,6 +50,7 @@ describe('InterruptPrompt', () => {
     await Promise.resolve()
 
     expect(useChatStore.getState().lastInterrupt).toBeNull()
+    expect(abortChatInterrupt).not.toHaveBeenCalled()
     expect(streamChat).toHaveBeenCalledWith(
       expect.objectContaining({ input: 'approve', session_id: 'session-1' }),
       expect.any(Function),
@@ -85,6 +89,20 @@ describe('InterruptPrompt', () => {
     expect(screen.queryByText(rawDump)).not.toBeInTheDocument()
     expect(screen.queryByText(/candidates/)).not.toBeInTheDocument()
     expect(screen.getByText('请输入你的回复以继续对话')).toBeVisible()
+  })
+
+  it('aborts the paused graph when the user closes the prompt', async () => {
+    useChatStore.setState({
+      lastInterrupt: { text: '请问是哪个门店？', buttons: [] },
+    })
+    render(<InterruptPrompt />)
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭确认' }))
+    await Promise.resolve()
+
+    expect(useChatStore.getState().lastInterrupt).toBeNull()
+    expect(abortChatInterrupt).toHaveBeenCalledWith('session-1', expect.anything())
+    expect(streamChat).not.toHaveBeenCalled()
   })
 
   it('still shows a natural-language question as-is', () => {

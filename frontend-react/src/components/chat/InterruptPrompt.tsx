@@ -3,7 +3,9 @@ import { X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { abortChatInterrupt } from '@/api/chat'
 import { sanitizeInterruptText } from '@/lib/interruptText'
+import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 
 export default function InterruptPrompt() {
@@ -17,15 +19,31 @@ export default function InterruptPrompt() {
 
   if (!lastInterrupt) return null
 
-  function close() {
+  function clearInterruptUi() {
     useChatStore.setState({ lastInterrupt: null })
+  }
+
+  async function dismissInterrupt() {
+    const sid = sessionId
+    clearInterruptUi()
+    if (!sid) return
+    const auth = useAuthStore.getState()
+    try {
+      await abortChatInterrupt(sid, {
+        getAccessToken: () => auth.accessToken,
+        getStoredRefresh: () => auth.refreshToken,
+        refresh: () => auth.refresh(),
+      })
+    } catch {
+      /* UI already dismissed; server abort is best-effort */
+    }
   }
 
   function choose(option: string) {
     const text = option.trim()
     if (!text) return
     const sid = sessionId
-    close()
+    clearInterruptUi()
     if (sid) void useChatStore.getState().send(sid, text)
   }
 
@@ -61,7 +79,7 @@ export default function InterruptPrompt() {
           type="button"
           aria-label="关闭确认"
           title="关闭"
-          onClick={close}
+          onClick={() => void dismissInterrupt()}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--color-muted)] hover:text-[var(--color-foreground)]"
         >
           <X size={14} />

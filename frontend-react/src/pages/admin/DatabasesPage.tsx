@@ -12,6 +12,7 @@ import AppShell from '@/components/layout/AppShell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { runtimeApplyNotice } from '@/lib/runtimeApplyMessage'
 import DatabaseConnectionDialog from './DatabaseConnectionDialog'
 
 function connectionSummary(row: DatabaseConnection): string {
@@ -29,6 +30,9 @@ export default function DatabasesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<DatabaseConnection | null>(null)
   const [activatingId, setActivatingId] = useState<string | null>(null)
+  const [activateNotice, setActivateNotice] = useState<{ tone: 'success' | 'warning'; text: string } | null>(
+    null,
+  )
 
   async function refresh() {
     setLoading(true)
@@ -61,8 +65,12 @@ export default function DatabasesPage() {
   async function onActivate(row: DatabaseConnection) {
     setActivatingId(row.id)
     setError(null)
+    setActivateNotice(null)
     try {
-      await activateDatabaseConnection(row.id)
+      const updated = await activateDatabaseConnection(row.id)
+      if (updated.runtime_apply) {
+        setActivateNotice(runtimeApplyNotice(updated.runtime_apply))
+      }
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : '切换失败')
@@ -109,6 +117,18 @@ export default function DatabasesPage() {
           </div>
 
           {error && <p className="mb-3 text-sm text-[var(--color-destructive)]">{error}</p>}
+          {activateNotice && (
+            <p
+              className={`mb-3 text-sm ${
+                activateNotice.tone === 'warning'
+                  ? 'text-amber-700 dark:text-amber-400'
+                  : 'text-emerald-700 dark:text-emerald-400'
+              }`}
+              role="status"
+            >
+              {activateNotice.text}
+            </p>
+          )}
 
           <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-card)]">
             <Table>

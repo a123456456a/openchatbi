@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth.deps import get_current_user
 from backend.auth.models import User, UserLlmConfig
-from backend.chat.schemas import ChatStreamRequest
+from backend.chat.schemas import AbortInterruptResponse, ChatStreamRequest
 from backend.db import get_db
 from backend.llm.crypto import decrypt_api_key
 from backend.llm.factory import build_chat_model
@@ -176,6 +176,37 @@ async def chat_stream(
     if (req.mode or "events") == "text":
         return StreamingResponse(text_generator(), media_type="text/plain")
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+
+@chat_router.post("/chat/sessions/{session_id}/abort-interrupt", response_model=AbortInterruptResponse)
+async def abort_chat_interrupt(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AbortInterruptResponse:
+    """Drop a paused LangGraph thread so the next message starts a fresh turn."""
+    user_id = current_user.id
+    run_config = build_run_config(user_id=user_id, session_id=session_id)
+
+    provider, llm, config_hash = resolve_user_chat_llm(db, current_user)
+    try:
+        graph = await get_or_build_graph(user_id, provider, llm, config_hash)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    pending_state = await graph.aget_state(run_config)
+    if not pending_state.interrupts:
+        return AbortInterruptResponse(aborted=False, had_interrupt=False)
+
+    thread_id = run_config["configurable"]["thread_id"]
+    checkpointer = graph.checkpointer
+    if checkpointer is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Agent graph has no checkpointer; cannot abort interrupt",
+        )
+    await checkpointer.adelete_thread(thread_id)
+    return AbortInterruptResponse(aborted=True, had_interrupt=True)
 
 
 @chat_router.get("/me/memories")

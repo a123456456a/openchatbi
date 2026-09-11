@@ -223,6 +223,9 @@ def test_activate_applies_to_running_openchatbi_config(client):
             f"/api/admin/database-connections/{a['id']}/activate", headers=_auth(tok["access_token"])
         )
     assert r.status_code == 200
+    body = r.json()
+    assert body["runtime_apply"]["catalog_sync_status"] == "success"
+    assert body["runtime_apply"]["index_reload_status"] == "success"
     fake_catalog_store.set_data_warehouse_config.assert_called_once()
     applied_config = fake_catalog_store.set_data_warehouse_config.call_args[0][0]
     assert applied_config["uri"].startswith("mysql+pymysql://reader:")
@@ -230,3 +233,50 @@ def test_activate_applies_to_running_openchatbi_config(client):
     assert fake_config.dialect == "mysql"
     sync_mock.assert_called_once_with(fake_catalog_store)
     reload_mock.assert_called_once_with(fake_catalog_store)
+
+
+def test_activate_reports_catalog_sync_failure(client):
+    tok = _bootstrap_admin(client)
+    a = client.post("/api/admin/database-connections", headers=_auth(tok["access_token"]), json=_MYSQL_BODY).json()
+
+    fake_catalog_store = MagicMock()
+    fake_config = MagicMock()
+    fake_config.catalog_store = fake_catalog_store
+
+    with (
+        patch("openchatbi.config.get", return_value=fake_config),
+        patch("openchatbi.catalog.catalog_loader.sync_catalog_from_data_warehouse", return_value=False),
+        patch("openchatbi.catalog.catalog_loader.reload_catalog_indexes") as reload_mock,
+    ):
+        r = client.post(
+            f"/api/admin/database-connections/{a['id']}/activate", headers=_auth(tok["access_token"])
+        )
+    assert r.status_code == 200
+    assert r.json()["is_active"] is True
+    apply_status = r.json()["runtime_apply"]
+    assert apply_status["catalog_sync_status"] == "failed"
+    assert apply_status["index_reload_status"] == "skipped"
+    reload_mock.assert_not_called()
+
+
+def test_activate_reports_index_reload_failure(client):
+    tok = _bootstrap_admin(client)
+    a = client.post("/api/admin/database-connections", headers=_auth(tok["access_token"]), json=_MYSQL_BODY).json()
+
+    fake_catalog_store = MagicMock()
+    fake_config = MagicMock()
+    fake_config.catalog_store = fake_catalog_store
+
+    with (
+        patch("openchatbi.config.get", return_value=fake_config),
+        patch("openchatbi.catalog.catalog_loader.sync_catalog_from_data_warehouse", return_value=True),
+        patch("openchatbi.catalog.catalog_loader.reload_catalog_indexes", side_effect=RuntimeError("index boom")),
+    ):
+        r = client.post(
+            f"/api/admin/database-connections/{a['id']}/activate", headers=_auth(tok["access_token"])
+        )
+    assert r.status_code == 200
+    apply_status = r.json()["runtime_apply"]
+    assert apply_status["catalog_sync_status"] == "success"
+    assert apply_status["index_reload_status"] == "failed"
+    assert "index boom" in apply_status["message"]

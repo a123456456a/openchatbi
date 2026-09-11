@@ -13,6 +13,12 @@ export type DialectCatalogItem = {
   database_placeholder: string
 }
 
+export type ConnectionRuntimeApplyStatus = {
+  catalog_sync_status: 'success' | 'failed' | 'skipped'
+  index_reload_status: 'success' | 'failed' | 'skipped'
+  message?: string | null
+}
+
 export type DatabaseConnection = {
   id: string
   name: string
@@ -31,6 +37,7 @@ export type DatabaseConnection = {
   is_active: boolean
   created_at?: string | null
   updated_at?: string | null
+  runtime_apply?: ConnectionRuntimeApplyStatus | null
 }
 
 export type DatabaseConnectionsResponse = {

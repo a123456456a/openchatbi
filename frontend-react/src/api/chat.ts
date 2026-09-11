@@ -1,6 +1,11 @@
 import { parseNdjsonChunk } from '@/lib/ndjson'
 import type { StreamEvent } from '@/types/stream'
 
+export type AbortInterruptResponse = {
+  aborted: boolean
+  had_interrupt: boolean
+}
+
 export type ChatStreamBody = {
   input: string
   session_id: string
@@ -26,6 +31,39 @@ async function authHeaders(deps: ChatStreamDeps): Promise<HeadersInit> {
   const token = deps.getAccessToken()
   if (token) headers.Authorization = `Bearer ${token}`
   return headers
+}
+
+export async function abortChatInterrupt(
+  sessionId: string,
+  deps: ChatStreamDeps,
+): Promise<AbortInterruptResponse> {
+  const attempt = async () => {
+    const headers = await authHeaders(deps)
+    return fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/abort-interrupt`, {
+      method: 'POST',
+      headers,
+    })
+  }
+
+  let res = await attempt()
+  if (res.status === 401) {
+    const ok = await deps.refresh()
+    if (!ok) throw new Error('未登录或登录已过期')
+    res = await attempt()
+  }
+
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try {
+      const j = (await res.json()) as { detail?: string }
+      if (typeof j.detail === 'string') detail = j.detail
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail)
+  }
+
+  return (await res.json()) as AbortInterruptResponse
 }
 
 export async function streamChat(

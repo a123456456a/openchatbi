@@ -51,12 +51,12 @@ def update_connection(
     db: Session = Depends(get_db),
 ) -> ConnectionOut:
     try:
-        row = service.update_connection(db, connection_id, body)
+        row, runtime_apply = service.update_connection(db, connection_id, body)
     except service.ConnectionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
     except service.WarehouseError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.detail) from exc
-    return service.to_connection_out(row)
+    return service.to_connection_out(row, runtime_apply=runtime_apply)
 
 
 @warehouse_router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -81,10 +81,10 @@ def activate_connection(
     db: Session = Depends(get_db),
 ) -> ConnectionOut:
     try:
-        row = service.activate_connection(db, connection_id)
+        row, runtime_apply = service.activate_connection(db, connection_id)
     except service.ConnectionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
-    return service.to_connection_out(row)
+    return service.to_connection_out(row, runtime_apply=runtime_apply)
 
 
 @warehouse_router.post("/test", response_model=TestConnectionResult)
