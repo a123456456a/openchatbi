@@ -23,6 +23,8 @@ class TestCatalogStore:
         assert hasattr(CatalogStore, "get_data_warehouse_config")
         assert hasattr(CatalogStore, "get_sql_engine")
         assert hasattr(CatalogStore, "save_table_information")
+        assert hasattr(CatalogStore, "snapshot_catalog")
+        assert hasattr(CatalogStore, "restore_catalog_snapshot")
 
 
 class TestFileSystemCatalogStore:
@@ -195,6 +197,25 @@ class TestFileSystemCatalogStore:
         assert store.clear_catalog() is True
         assert store.get_table_list() == []
         assert store.check_exists() is False
+
+    def test_snapshot_restore_round_trip(self, temp_dir):
+        data_warehouse_config = {"uri": "sqlite:///:memory:", "include_tables": None, "database_name": "test_db"}
+        store = FileSystemCatalogStore(data_path=str(temp_dir), data_warehouse_config=data_warehouse_config)
+        store.save_table_information(
+            "Orders",
+            {"description": "orders", "selection_rule": "", "sql_rule": ""},
+            [{"column_name": "order_id", "type": "INTEGER", "description": "", "is_common": False}],
+            database="test_db",
+        )
+        store.save_table_selection_examples([("q", ["test_db.Orders"])])
+        snapshot = store.snapshot_catalog()
+
+        assert store.clear_catalog() is True
+        assert store.get_table_list() == []
+
+        assert store.restore_catalog_snapshot(snapshot) is True
+        assert "test_db.Orders" in store.get_table_list()
+        assert store.get_table_selection_examples() == [("q", ["test_db.Orders"])]
 
     def test_data_path_validation(self):
         """Test data path validation."""

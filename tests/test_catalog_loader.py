@@ -3,8 +3,10 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from sqlalchemy import create_engine, text
 
 from openchatbi.catalog.catalog_loader import DataCatalogLoader, load_catalog_from_data_warehouse
+from openchatbi.catalog.store.file_system import FileSystemCatalogStore
 
 
 class TestDataCatalogLoader:
@@ -136,7 +138,7 @@ class TestDataCatalogLoader:
             mock_loader.save_to_catalog_store.assert_called_once()
 
     def test_sync_catalog_from_data_warehouse_clears_then_loads(self):
-        """Sync must clear the previous catalog before loading the new warehouse."""
+        """Sync must snapshot, clear, then load the new warehouse."""
         from openchatbi.catalog.catalog_loader import sync_catalog_from_data_warehouse
 
         mock_catalog_store = Mock()
@@ -150,6 +152,7 @@ class TestDataCatalogLoader:
         mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
         mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
         mock_catalog_store.get_sql_engine.return_value = mock_engine
+        mock_catalog_store.snapshot_catalog.return_value = {"snap": True}
         mock_catalog_store.clear_catalog.return_value = True
 
         with patch("openchatbi.catalog.catalog_loader.DataCatalogLoader") as mock_loader_class:
@@ -160,7 +163,9 @@ class TestDataCatalogLoader:
             result = sync_catalog_from_data_warehouse(mock_catalog_store)
 
         assert result is True
+        mock_catalog_store.snapshot_catalog.assert_called_once()
         mock_catalog_store.clear_catalog.assert_called_once()
+        mock_catalog_store.restore_catalog_snapshot.assert_not_called()
         mock_loader.save_to_catalog_store.assert_called_once_with(mock_catalog_store, "analytics", update=True)
 
     def test_sync_catalog_skips_clear_when_probe_fails(self):
@@ -176,7 +181,67 @@ class TestDataCatalogLoader:
         mock_catalog_store.get_sql_engine.return_value = mock_engine
 
         assert sync_catalog_from_data_warehouse(mock_catalog_store) is False
+        mock_catalog_store.snapshot_catalog.assert_not_called()
         mock_catalog_store.clear_catalog.assert_not_called()
+
+    def test_sync_catalog_restores_snapshot_when_load_fails(self):
+        """A failed load after clear must restore the previous catalog."""
+        from openchatbi.catalog.catalog_loader import sync_catalog_from_data_warehouse
+
+        mock_catalog_store = Mock()
+        mock_catalog_store.get_data_warehouse_config.return_value = {
+            "uri": "sqlite:///:memory:",
+            "include_tables": None,
+            "database_name": "analytics",
+        }
+        mock_engine = Mock()
+        mock_conn = Mock()
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
+        mock_catalog_store.get_sql_engine.return_value = mock_engine
+        snapshot = {"previous": "catalog"}
+        mock_catalog_store.snapshot_catalog.return_value = snapshot
+        mock_catalog_store.clear_catalog.return_value = True
+        mock_catalog_store.restore_catalog_snapshot.return_value = True
+
+        with patch("openchatbi.catalog.catalog_loader.DataCatalogLoader") as mock_loader_class:
+            mock_loader = Mock()
+            mock_loader.save_to_catalog_store.return_value = False
+            mock_loader_class.return_value = mock_loader
+
+            result = sync_catalog_from_data_warehouse(mock_catalog_store)
+
+        assert result is False
+        mock_catalog_store.clear_catalog.assert_called_once()
+        mock_catalog_store.restore_catalog_snapshot.assert_called_once_with(snapshot)
+
+    def test_sync_catalog_restores_snapshot_when_load_raises(self):
+        from openchatbi.catalog.catalog_loader import sync_catalog_from_data_warehouse
+
+        mock_catalog_store = Mock()
+        mock_catalog_store.get_data_warehouse_config.return_value = {
+            "uri": "sqlite:///:memory:",
+            "database_name": "analytics",
+        }
+        mock_engine = Mock()
+        mock_conn = Mock()
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
+        mock_catalog_store.get_sql_engine.return_value = mock_engine
+        snapshot = {"previous": "catalog"}
+        mock_catalog_store.snapshot_catalog.return_value = snapshot
+        mock_catalog_store.clear_catalog.return_value = True
+        mock_catalog_store.restore_catalog_snapshot.return_value = True
+
+        with patch("openchatbi.catalog.catalog_loader.DataCatalogLoader") as mock_loader_class:
+            mock_loader = Mock()
+            mock_loader.save_to_catalog_store.side_effect = RuntimeError("boom")
+            mock_loader_class.return_value = mock_loader
+
+            result = sync_catalog_from_data_warehouse(mock_catalog_store)
+
+        assert result is False
+        mock_catalog_store.restore_catalog_snapshot.assert_called_once_with(snapshot)
 
     def test_error_handling_in_get_tables_and_columns(self, mock_engine):
         """Test error handling in get_tables_and_columns method."""
@@ -188,3 +253,76 @@ class TestDataCatalogLoader:
             result = loader.get_tables_and_columns()
 
             assert result == {}
+
+
+class TestSyncCatalogAtomicity:
+    """Integration: failed sync must not leave an empty filesystem catalog."""
+
+    def test_sync_failure_after_clear_restores_previous_catalog(self, tmp_path):
+        from openchatbi.catalog.catalog_loader import sync_catalog_from_data_warehouse
+
+        warehouse = tmp_path / "warehouse.db"
+        engine = create_engine(f"sqlite:///{warehouse}")
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE demo (id INTEGER PRIMARY KEY)"))
+
+        store = FileSystemCatalogStore(
+            data_path=str(tmp_path / "catalog"),
+            data_warehouse_config={
+                "uri": f"sqlite:///{warehouse}",
+                "include_tables": None,
+                "database_name": "demo_db",
+            },
+        )
+        store.save_table_information(
+            "Legacy",
+            {"description": "keep me", "selection_rule": "", "sql_rule": ""},
+            [{"column_name": "legacy_id", "type": "INTEGER", "description": "", "is_common": False}],
+            database="demo_db",
+        )
+        assert store.check_exists() is True
+        previous_tables = store.get_table_list()
+
+        with patch(
+            "openchatbi.catalog.catalog_loader.DataCatalogLoader.save_to_catalog_store",
+            return_value=False,
+        ):
+            ok = sync_catalog_from_data_warehouse(store)
+
+        assert ok is False
+        assert store.check_exists() is True
+        assert store.get_table_list() == previous_tables
+        assert store.get_table_information("Legacy", "demo_db")["description"] == "keep me"
+
+    def test_sync_exception_after_clear_restores_previous_catalog(self, tmp_path):
+        from openchatbi.catalog.catalog_loader import sync_catalog_from_data_warehouse
+
+        warehouse = tmp_path / "warehouse.db"
+        engine = create_engine(f"sqlite:///{warehouse}")
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE demo (id INTEGER PRIMARY KEY)"))
+
+        store = FileSystemCatalogStore(
+            data_path=str(tmp_path / "catalog"),
+            data_warehouse_config={
+                "uri": f"sqlite:///{warehouse}",
+                "include_tables": None,
+                "database_name": "demo_db",
+            },
+        )
+        store.save_table_information(
+            "Legacy",
+            {"description": "keep me", "selection_rule": "", "sql_rule": ""},
+            [{"column_name": "legacy_id", "type": "INTEGER", "description": "", "is_common": False}],
+            database="demo_db",
+        )
+
+        with patch(
+            "openchatbi.catalog.catalog_loader.DataCatalogLoader.save_to_catalog_store",
+            side_effect=RuntimeError("load exploded"),
+        ):
+            ok = sync_catalog_from_data_warehouse(store)
+
+        assert ok is False
+        assert store.check_exists() is True
+        assert "demo_db.Legacy" in store.get_table_list()

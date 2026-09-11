@@ -217,8 +217,14 @@ def sync_catalog_from_data_warehouse(catalog_store: CatalogStore) -> bool:
     Unlike :func:`load_catalog_from_data_warehouse` (merge/append into existing
     files), this clears the store first so leftover tables from a previous
     warehouse (e.g. the demo SQLite schema) cannot linger after activation.
+
+    The clear+load is rollback-safe: a snapshot is taken first, and if the load
+    fails (or raises) the previous catalog is restored so activation cannot leave
+    an empty catalog while the connection is already active.
     """
     database_uri = None
+    snapshot = None
+    cleared = False
     try:
         data_warehouse_config = catalog_store.get_data_warehouse_config()
         database_uri = data_warehouse_config.get("uri")
@@ -230,14 +236,33 @@ def sync_catalog_from_data_warehouse(catalog_store: CatalogStore) -> bool:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
 
+        snapshot = catalog_store.snapshot_catalog()
+
         if not catalog_store.clear_catalog():
             logger.error("Failed to clear catalog store before sync")
             return False
+        cleared = True
 
         loader = DataCatalogLoader(engine, include_tables)
-        return loader.save_to_catalog_store(catalog_store, database_name, update=True)
+        ok = loader.save_to_catalog_store(catalog_store, database_name, update=True)
+        if ok:
+            return True
+
+        logger.error(
+            "Catalog sync load failed for URI %s; restoring previous catalog snapshot",
+            database_uri,
+        )
+        if not catalog_store.restore_catalog_snapshot(snapshot):
+            logger.error("Failed to restore catalog snapshot after sync load failure")
+        return False
     except Exception as e:  # noqa: BLE001
         logger.error("Failed to sync catalog from data warehouse URI %s: %s", database_uri, e)
+        if cleared and snapshot is not None:
+            try:
+                if not catalog_store.restore_catalog_snapshot(snapshot):
+                    logger.error("Failed to restore catalog snapshot after sync exception")
+            except Exception as restore_exc:  # noqa: BLE001
+                logger.error("Exception while restoring catalog snapshot: %s", restore_exc)
         return False
 
 
