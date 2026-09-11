@@ -1,7 +1,8 @@
 import logging
+import threading
 from typing import Any, cast
 
-from sqlalchemy import MetaData, inspect
+from sqlalchemy import MetaData, inspect, text
 from sqlalchemy.engine import Engine
 
 from .catalog_store import CatalogStore
@@ -156,7 +157,9 @@ class DataCatalogLoader:
                         logger.info("Skipping table comment for %s: %s", table_name, e)
 
                     table_info: dict[str, Any] = {"description": table_comment, "selection_rule": "", "sql_rule": ""}
-                    if catalog_store.save_table_information(table_name, table_info, columns, database_name):
+                    if catalog_store.save_table_information(
+                        table_name, table_info, columns, database_name, update_existing=update
+                    ):
                         success_count += 1
                         logger.info(f"Successfully loaded table: {database_name}.{table_name}")
                     else:
@@ -206,3 +209,106 @@ def load_catalog_from_data_warehouse(catalog_store: CatalogStore) -> bool:
     except Exception as e:
         logger.error(f"Failed to import catalog from data warehouse URI {database_uri}: {e}")
         return False
+
+
+def sync_catalog_from_data_warehouse(catalog_store: CatalogStore) -> bool:
+    """Replace catalog contents with a fresh introspection of the configured warehouse.
+
+    Unlike :func:`load_catalog_from_data_warehouse` (merge/append into existing
+    files), this clears the store first so leftover tables from a previous
+    warehouse (e.g. the demo SQLite schema) cannot linger after activation.
+    """
+    database_uri = None
+    try:
+        data_warehouse_config = catalog_store.get_data_warehouse_config()
+        database_uri = data_warehouse_config.get("uri")
+        include_tables = data_warehouse_config.get("include_tables")
+        database_name = data_warehouse_config.get("database_name", "default")
+        engine = catalog_store.get_sql_engine()
+
+        # Probe connectivity before wiping so a bad URI does not empty the catalog.
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+
+        if not catalog_store.clear_catalog():
+            logger.error("Failed to clear catalog store before sync")
+            return False
+
+        loader = DataCatalogLoader(engine, include_tables)
+        return loader.save_to_catalog_store(catalog_store, database_name, update=True)
+    except Exception as e:  # noqa: BLE001
+        logger.error("Failed to sync catalog from data warehouse URI %s: %s", database_uri, e)
+        return False
+
+
+def reload_catalog_indexes(catalog_store: CatalogStore | None = None) -> None:
+    """Rebuild BM25 / vector / example indexes after the catalog contents change.
+
+    Module-level imports in schema linking and SQL generation hold references to
+    the old retriever objects, so this updates both the source modules and the
+    known consumer bindings.
+    """
+    from openchatbi import config as openchatbi_config
+    from openchatbi.catalog.retrival_helper import build_column_tables_mapping, build_columns_retriever
+    from openchatbi.text2sql.text2sql_utils import (
+        LearnedSQLStore,
+        _init_sql_example_retriever,
+        _init_table_selection_example_dict,
+    )
+
+    store = catalog_store if catalog_store is not None else openchatbi_config.get().catalog_store
+    vector_db_path = openchatbi_config.get().vector_db_path
+
+    import openchatbi.catalog.schema_retrival as schema_retrival
+    import openchatbi.text2sql.data as text2sql_data
+    import openchatbi.text2sql.generate_sql as generate_sql
+    import openchatbi.text2sql.schema_linking as schema_linking
+    import openchatbi.tool.search_knowledge as search_knowledge
+
+    new_bm25, new_vector_db, new_columns, new_col_dict = build_columns_retriever(store, vector_db_path)
+    new_mapping = build_column_tables_mapping(store)
+
+    schema_retrival._catalog_store = store
+    schema_retrival.bm25 = new_bm25
+    schema_retrival.vector_db = new_vector_db
+    schema_retrival.columns = new_columns
+    schema_retrival.col_dict.clear()
+    schema_retrival.col_dict.update(new_col_dict)
+    schema_retrival.column_tables_mapping.clear()
+    schema_retrival.column_tables_mapping.update(new_mapping)
+
+    # Keep imported dict aliases pointing at the mutated objects.
+    search_knowledge.col_dict = schema_retrival.col_dict
+    search_knowledge.column_tables_mapping = schema_retrival.column_tables_mapping
+    schema_linking.col_dict = schema_retrival.col_dict
+    schema_linking.column_tables_mapping = schema_retrival.column_tables_mapping
+
+    sql_example_retriever, sql_example_dicts, sql_example_vector_db = _init_sql_example_retriever(
+        store, vector_db_path
+    )
+    table_selection_retriever, table_selection_example_dict = _init_table_selection_example_dict(
+        store, vector_db_path
+    )
+
+    text2sql_data._catalog_store = store
+    text2sql_data.sql_example_retriever = sql_example_retriever
+    text2sql_data.sql_example_vector_db = sql_example_vector_db
+    text2sql_data.sql_example_dicts.clear()
+    text2sql_data.sql_example_dicts.update(sql_example_dicts)
+    text2sql_data.learned_sql_store = LearnedSQLStore(
+        sql_example_vector_db, text2sql_data.sql_example_dicts, threading.Lock()
+    )
+    text2sql_data.table_selection_retriever = table_selection_retriever
+    text2sql_data.table_selection_example_dict.clear()
+    text2sql_data.table_selection_example_dict.update(table_selection_example_dict)
+
+    generate_sql.sql_example_retriever = sql_example_retriever
+    generate_sql.sql_example_dicts = text2sql_data.sql_example_dicts
+    schema_linking.table_selection_retriever = table_selection_retriever
+    schema_linking.table_selection_example_dict = text2sql_data.table_selection_example_dict
+
+    logger.info(
+        "Reloaded catalog indexes: %s columns, %s tables",
+        len(new_columns),
+        len(store.get_table_list()),
+    )

@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "OpenChatBI 提示词、工具、MCP 与数据库流程",
+    "locale": "zh-CN",
+    "animation": "none",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/openchatbi-technical-workflow.html"
+  },
+  "lanes": [
+    { "id": "client", "label": "用户与接口" },
+    { "id": "runtime", "label": "Agent Runtime" },
+    { "id": "data", "label": "配置、MCP 与数据库" }
+  ],
+  "phases": [
+    { "id": "load", "label": "启动 / 构建阶段", "fromCol": 0, "toCol": 2, "variant": "dashed" },
+    { "id": "dispatch", "label": "请求 / 调用阶段", "fromCol": 3, "toCol": 5, "variant": "emphasis" }
+  ],
+  "groups": [
+    { "id": "prompt_group", "label": "懒加载并缓存", "lane": "runtime", "fromCol": 1, "toCol": 2, "variant": "emphasis" },
+    { "id": "tool_group", "label": "统一工具分发", "lane": "runtime", "fromCol": 3, "toCol": 4, "variant": "dashed" },
+    { "id": "catalog_group", "label": "元数据与查询连接", "lane": "data", "fromCol": 1, "toCol": 4, "variant": "dashed" }
+  ],
+  "mainPath": ["user", "api", "agent", "tool_node", "sql_graph", "warehouse", "result"],
+  "semanticChecks": {
+    "allowedRoots": ["user", "config", "mcp_loader"],
+    "allowedTerminals": ["result", "clarify"],
+    "requiredPaths": [
+      { "from": "user", "to": "result" },
+      { "from": "config", "to": "tool_node" },
+      { "from": "config", "to": "tool_node" }
+    ]
+  },
+  "nodes": [
+    { "id": "user", "lane": "client", "col": 0, "type": "external", "label": "用户问题", "width": 110 },
+    { "id": "api", "lane": "client", "col": 1, "type": "backend", "label": "Chat API", "tag": "JWT + NDJSON", "width": 110 },
+    { "id": "result", "lane": "client", "col": 5, "type": "frontend", "label": "流式结果", "sublabel": "答案 + SQL + 图表", "width": 110 },
+    { "id": "config", "lane": "runtime", "col": 0, "type": "backend", "label": "ConfigLoader", "sublabel": "YAML / 环境配置", "tag": "启动时读取", "width": 110 },
+    { "id": "prompt", "lane": "runtime", "col": 1, "type": "backend", "label": "Prompt Templates", "sublabel": "资源加载 + 缓存", "tag": "注入业务配置", "width": 110 },
+    { "id": "agent", "lane": "runtime", "col": 2, "type": "backend", "label": "Agent Graph", "sublabel": "LangGraph + LLM", "tag": "选择下一步", "width": 110 },
+    { "id": "tool_node", "lane": "runtime", "col": 3, "type": "messagebus", "label": "ToolNode", "sublabel": "内置工具 + MCP 工具", "tag": "统一分发", "width": 110 },
+    { "id": "sql_graph", "lane": "runtime", "col": 4, "type": "backend", "label": "Text2SQL Graph", "sublabel": "schema linking → SQL", "tag": "方言 / 重试 / 可视化", "width": 110 },
+    { "id": "clarify", "lane": "runtime", "col": 5, "type": "security", "label": "人工澄清", "sublabel": "失败或低置信度", "width": 110 },
+    { "id": "mcp_loader", "lane": "data", "col": 2, "type": "cloud", "label": "MCP Loader", "sublabel": "mcp_servers；发现工具", "width": 110 },
+    { "id": "catalog", "lane": "data", "col": 1, "type": "database", "label": "Catalog Store", "sublabel": "表列元数据；缺失时扫描", "width": 110 },
+    { "id": "warehouse", "lane": "data", "col": 4, "type": "database", "label": "Data Warehouse", "sublabel": "SQLAlchemy engine", "width": 110 }
+  ],
+  "edges": [
+    { "id": "user-api", "from": "user", "to": "api", "label": "提交问题", "variant": "default" },
+    { "id": "api-agent", "from": "api", "to": "agent", "label": "加载会话与模型", "variant": "emphasis" },
+    { "id": "config-prompt", "from": "config", "to": "prompt", "label": "读取模板并缓存", "variant": "emphasis" },
+    { "id": "prompt-agent", "from": "prompt", "to": "agent", "label": "组装 SystemMessage", "variant": "emphasis" },
+    { "id": "mcp-tools", "from": "mcp_loader", "to": "tool_node", "label": "注册并按需调用 MCP", "variant": "dashed" },
+    { "id": "config-catalog", "from": "config", "to": "catalog", "label": "创建 CatalogStore", "variant": "dashed" },
+    { "id": "agent-tool", "from": "agent", "to": "tool_node", "label": "选择并调用工具", "variant": "emphasis" },
+    { "id": "tool-sql", "from": "tool_node", "to": "sql_graph", "label": "调用 text2sql", "variant": "emphasis" },
+    { "id": "catalog-sql", "from": "catalog", "to": "sql_graph", "label": "提供表列上下文", "variant": "dashed" },
+    { "id": "sql-warehouse", "from": "sql_graph", "to": "warehouse", "label": "SQLAlchemy execute", "variant": "default" },
+    { "id": "warehouse-result", "from": "warehouse", "to": "result", "label": "结果与可视化 DSL", "variant": "emphasis", "role": "return", "width": 1.2 },
+    { "id": "sql-clarify", "from": "sql_graph", "to": "clarify", "label": "失败 / 低置信度", "variant": "security", "role": "error" }
+  ]
+}

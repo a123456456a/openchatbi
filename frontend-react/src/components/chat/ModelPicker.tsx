@@ -66,12 +66,9 @@ export default function ModelPicker() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium text-[var(--color-muted-foreground)] transition-colors hover:text-[var(--color-foreground)] data-open:text-[var(--color-foreground)]"
+          className="flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1 text-[13px] font-medium text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--color-muted)] hover:text-[var(--color-foreground)] data-open:text-[var(--color-foreground)]"
         >
-          <span className="max-w-[8rem] truncate">
-            {activeLabel}
-            {activeConfig ? <span className="text-[var(--color-muted-foreground)]"> · {activeConfig.model}</span> : null}
-          </span>
+          <span className="max-w-[8rem] truncate">{activeConfig?.model ?? activeLabel}</span>
           <ChevronDown size={12} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>

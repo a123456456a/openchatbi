@@ -61,13 +61,14 @@ def build_columns_retriever(catalog, vector_db_path: str | None = None):
     """
     columns, col_dict, column_tokens, embedding_keys = get_columns_metadata(catalog)
 
-    bm25 = BM25Okapi(column_tokens)
+    # BM25Okapi rejects an empty corpus; keep a inert placeholder after a full clear.
+    bm25 = BM25Okapi(column_tokens if column_tokens else [["__empty__"]])
 
     log("Building vector database for columns...")
     vector_db = create_vector_db(
-        embedding_keys,
+        embedding_keys if embedding_keys else [""],
         get_embedding_model(),
-        metadatas=columns,
+        metadatas=columns if columns else [{"column_name": ""}],
         collection_name="columns",
         collection_metadata={"hnsw:space": "cosine"},
         chroma_db_path=vector_db_path,

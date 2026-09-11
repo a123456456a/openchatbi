@@ -623,3 +623,21 @@ class DatabaseCatalogStore(CatalogStore):
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Error checking catalog existence: {e}")
             return False
+
+    def clear_catalog(self) -> bool:
+        """Delete all catalog rows so the next sync starts from an empty store."""
+        try:
+            with self._session_factory() as session:
+                session.execute(delete(CatalogTableColumn))
+                session.execute(delete(CatalogSqlExample))
+                session.execute(delete(CatalogTableSelectionExample))
+                session.execute(delete(CatalogColumn))
+                session.execute(delete(CatalogTable))
+                session.execute(delete(CatalogDatabase))
+                session.commit()
+            logger.info("Cleared database catalog store")
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Failed to clear database catalog: {e}")
+            logger.error(traceback.format_stack())
+            return False

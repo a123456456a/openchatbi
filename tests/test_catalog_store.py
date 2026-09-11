@@ -181,6 +181,21 @@ class TestFileSystemCatalogStore:
         with pytest.raises(ValueError):
             store.set_data_warehouse_config("not-a-dict")
 
+    def test_clear_catalog_removes_tables(self, temp_dir):
+        data_warehouse_config = {"uri": "sqlite:///:memory:", "include_tables": None, "database_name": "test_db"}
+        store = FileSystemCatalogStore(data_path=str(temp_dir), data_warehouse_config=data_warehouse_config)
+        store.save_table_information(
+            "Orders",
+            {"description": "orders", "selection_rule": "", "sql_rule": ""},
+            [{"column_name": "order_id", "type": "INTEGER", "description": "", "is_common": False}],
+            database="test_db",
+        )
+        assert store.get_table_list()
+
+        assert store.clear_catalog() is True
+        assert store.get_table_list() == []
+        assert store.check_exists() is False
+
     def test_data_path_validation(self):
         """Test data path validation."""
         data_warehouse_config = {"uri": "sqlite:///:memory:", "include_tables": None, "database_name": "test_db"}

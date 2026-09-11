@@ -189,12 +189,17 @@ def _decrypt(ciphertext: str | None) -> str | None:
         raise DecryptFailed() from exc
 
 
-def _apply_connection_to_runtime(row: DataWarehouseConnection) -> None:
+def _apply_connection_to_runtime(row: DataWarehouseConnection, *, sync_schema: bool = True) -> None:
     """Best-effort: push the activated connection into the running openchatbi
     config/catalog store and drop cached agent graphs. Never raises -- if the
     openchatbi runtime config isn't loaded (e.g. tests, or config.yaml
     missing), the change still persists in the app DB and will apply the next
     time it's loaded (see ``apply_active_connection_on_startup``).
+
+    When ``sync_schema`` is True (activation / active-connection update), also
+    replace the catalog metadata from the warehouse and rebuild retrieval
+    indexes so leftover demo tables cannot linger. Startup re-apply keeps
+    ``sync_schema=False`` to avoid wiping curated catalog edits on every boot.
     """
     password = _decrypt(row.password_encrypted)
     token_password = _decrypt(row.token_password_encrypted)
@@ -202,10 +207,29 @@ def _apply_connection_to_runtime(row: DataWarehouseConnection) -> None:
 
     try:
         from openchatbi import config as openchatbi_config
+        from openchatbi.catalog.catalog_loader import reload_catalog_indexes, sync_catalog_from_data_warehouse
 
         cfg = openchatbi_config.get()
         cfg.data_warehouse_config = data_warehouse_config
+        # Text2SQL / SQL graph compile dialect from config.dialect (see
+        # openchatbi.text2sql.sql_graph); keep it in sync with the activated
+        # warehouse or prompts keep targeting whatever config.yaml shipped
+        # (often the demo sqlite dialect).
+        cfg.dialect = row.dialect
         cfg.catalog_store.set_data_warehouse_config(data_warehouse_config)
+
+        if sync_schema:
+            if sync_catalog_from_data_warehouse(cfg.catalog_store):
+                try:
+                    reload_catalog_indexes(cfg.catalog_store)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Catalog synced but index reload failed: %s", exc)
+            else:
+                logger.warning(
+                    "Activated connection %s but catalog schema sync failed; "
+                    "catalog may still describe the previous warehouse",
+                    row.name,
+                )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not apply data warehouse connection to the running config: %s", exc)
     # Drop cached agent graphs regardless: the persisted active connection changed,
@@ -220,7 +244,9 @@ def apply_active_connection_on_startup(db: Session) -> None:
     than whatever ``config.yaml`` shipped with)."""
     row = db.query(DataWarehouseConnection).filter(DataWarehouseConnection.is_active.is_(True)).first()
     if row is not None:
-        _apply_connection_to_runtime(row)
+        # Catalog files were already synced on the last activate; only refresh
+        # the live warehouse URI/dialect here.
+        _apply_connection_to_runtime(row, sync_schema=False)
 
 
 def test_connection_payload(body: ConnectionIn) -> TestConnectionResult:

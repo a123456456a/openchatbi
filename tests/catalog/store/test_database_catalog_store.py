@@ -316,6 +316,16 @@ class TestCheckExists:
         db_store.save_table_information("Customers", _sample_information(), [], database="sales")
         assert db_store.check_exists() is True
 
+    def test_clear_catalog_removes_all_rows(self, db_store):
+        db_store.save_table_information("Customers", _sample_information(), _sample_columns(), database="sales")
+        db_store.save_table_selection_examples([("q", ["Customers"])])
+        assert db_store.check_exists() is True
+
+        assert db_store.clear_catalog() is True
+        assert db_store.check_exists() is False
+        assert db_store.get_table_list() == []
+        assert db_store.get_table_selection_examples() == []
+
 
 # --------------------------------------------------------------------------
 # 5.10 Factory integration

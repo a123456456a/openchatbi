@@ -222,6 +222,17 @@ class CatalogStore(ABC):
         """
         pass
 
+    def clear_catalog(self) -> bool:
+        """Remove all catalog content so a full warehouse sync can replace it.
+
+        Default raises :class:`NotImplementedError`. Stores that support runtime
+        schema sync must override this.
+
+        Returns:
+            bool: True if the catalog was cleared successfully
+        """
+        raise NotImplementedError
+
 
 def split_db_table_name(table: str, database: str | None = None) -> tuple[str, str, str]:
     """

@@ -135,6 +135,49 @@ class TestDataCatalogLoader:
             assert result
             mock_loader.save_to_catalog_store.assert_called_once()
 
+    def test_sync_catalog_from_data_warehouse_clears_then_loads(self):
+        """Sync must clear the previous catalog before loading the new warehouse."""
+        from openchatbi.catalog.catalog_loader import sync_catalog_from_data_warehouse
+
+        mock_catalog_store = Mock()
+        mock_catalog_store.get_data_warehouse_config.return_value = {
+            "uri": "sqlite:///:memory:",
+            "include_tables": None,
+            "database_name": "analytics",
+        }
+        mock_engine = Mock()
+        mock_conn = Mock()
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
+        mock_catalog_store.get_sql_engine.return_value = mock_engine
+        mock_catalog_store.clear_catalog.return_value = True
+
+        with patch("openchatbi.catalog.catalog_loader.DataCatalogLoader") as mock_loader_class:
+            mock_loader = Mock()
+            mock_loader.save_to_catalog_store.return_value = True
+            mock_loader_class.return_value = mock_loader
+
+            result = sync_catalog_from_data_warehouse(mock_catalog_store)
+
+        assert result is True
+        mock_catalog_store.clear_catalog.assert_called_once()
+        mock_loader.save_to_catalog_store.assert_called_once_with(mock_catalog_store, "analytics", update=True)
+
+    def test_sync_catalog_skips_clear_when_probe_fails(self):
+        from openchatbi.catalog.catalog_loader import sync_catalog_from_data_warehouse
+
+        mock_catalog_store = Mock()
+        mock_catalog_store.get_data_warehouse_config.return_value = {
+            "uri": "mysql+pymysql://bad",
+            "database_name": "x",
+        }
+        mock_engine = Mock()
+        mock_engine.connect.side_effect = RuntimeError("unreachable")
+        mock_catalog_store.get_sql_engine.return_value = mock_engine
+
+        assert sync_catalog_from_data_warehouse(mock_catalog_store) is False
+        mock_catalog_store.clear_catalog.assert_not_called()
+
     def test_error_handling_in_get_tables_and_columns(self, mock_engine):
         """Test error handling in get_tables_and_columns method."""
         mock_inspector = Mock()

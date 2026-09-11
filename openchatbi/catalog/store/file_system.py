@@ -333,22 +333,23 @@ class FileSystemCatalogStore(CatalogStore):
             bool: Whether the save was successful
         """
         try:
-            if not data:
-                return True
-
             # Get all possible headers from all rows
             all_headers: set[str] = set()
             for row in data:
                 all_headers.update(row.keys())
 
             # If specify field_names, make sure all keys are in field_names
+            fieldnames = list(headers) if headers is not None else sorted(all_headers)
             if headers is not None:
                 for key in all_headers:
-                    if key not in headers:
-                        headers.append(key)
+                    if key not in fieldnames:
+                        fieldnames.append(key)
+
+            if not fieldnames and not data:
+                return True
 
             with open(file_path, "w", encoding="utf-8", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=headers or sorted(all_headers))
+                writer = csv.DictWriter(f, fieldnames=fieldnames or sorted(all_headers))
                 writer.writeheader()
                 for row in data:
                     writer.writerow(row)
@@ -859,17 +860,55 @@ class FileSystemCatalogStore(CatalogStore):
 
     def check_exists(self) -> bool:
         try:
-            # Check if essential catalog files exist and have content
-            files_missing = (
-                not os.path.exists(self.table_columns_file)
-                or not os.path.exists(self.common_columns_file)
-                or os.path.getsize(self.table_columns_file) <= 1  # Empty or just header
-                or os.path.getsize(self.common_columns_file) <= 1
-            )
-
-            return not files_missing
+            if not os.path.exists(self.table_columns_file) or not os.path.exists(self.common_columns_file):
+                return False
+            # Header-only CSVs (written by clear_catalog) must count as empty.
+            rows = self._load_csv_file(self.table_columns_file)
+            return any(str(row.get("table_name") or "").strip() for row in rows)
 
         except Exception as e:
             logger.warning(f"Error checking catalog existence: {e}")
+            logger.error(traceback.format_stack())
+            return False
+
+    def clear_catalog(self) -> bool:
+        """Wipe filesystem catalog files so the next sync starts from an empty store."""
+        try:
+            if not self._save_yaml_file(self.table_info_file, {}):
+                return False
+            if not self._save_yaml_file(self.sql_example_file, {}):
+                return False
+            ok = (
+                self._save_csv_file(self.table_columns_file, [], ["db_name", "table_name", "column_name"])
+                and self._save_csv_file(
+                    self.common_columns_file,
+                    [],
+                    ["column_name", "display_name", "alias", "type", "category", "tag", "description"],
+                )
+                and self._save_csv_file(
+                    self.table_spec_columns_file,
+                    [],
+                    [
+                        "db_name",
+                        "table_name",
+                        "column_name",
+                        "display_name",
+                        "alias",
+                        "type",
+                        "category",
+                        "tag",
+                        "description",
+                    ],
+                )
+                and self._save_csv_file(
+                    self.table_selection_example_file, [], ["question", "selected_tables"]
+                )
+            )
+            if ok:
+                self._clear_cache()
+                logger.info("Cleared filesystem catalog at %s", self.data_path)
+            return ok
+        except Exception as e:
+            logger.error(f"Failed to clear filesystem catalog: {e}")
             logger.error(traceback.format_stack())
             return False

@@ -91,6 +91,15 @@ class TestSimpleStore:
         assert store.similarity_search("test", k=5) == []
         assert store.similarity_search_with_score("test", k=5) == []
 
+    def test_blank_only_texts_do_not_crash_bm25(self):
+        """Blank catalog fallbacks (texts=['']) must not ZeroDivisionError."""
+        store = SimpleStore([""])
+        assert store.bm25 is None
+        assert store.similarity_search("anything", k=3) == []
+
+        store = SimpleStore(["", "   "])
+        assert store.similarity_search("anything", k=3) == []
+
     def test_add_texts(self, simple_store):
         """Test adding texts with and without metadata."""
         initial_count = len(simple_store.texts)

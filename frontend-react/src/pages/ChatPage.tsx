@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router'
 import AppShell from '@/components/layout/AppShell'
 import ChatComposer from '@/components/chat/ChatComposer'
 import ChatWelcome from '@/components/chat/ChatWelcome'
-import InterruptDialog from '@/components/chat/InterruptDialog'
+import InterruptPrompt from '@/components/chat/InterruptPrompt'
 import MessageList from '@/components/chat/MessageList'
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -84,6 +84,7 @@ function ActiveChatComposer({ sessionId }: { sessionId: string }) {
   return (
     <div className="border-t border-[var(--color-border)] bg-[var(--color-card)] p-4">
       <div className="mx-auto max-w-3xl">
+        <InterruptPrompt />
         <ChatComposer
           value={input}
           onChange={setInput}
@@ -175,7 +176,6 @@ export default function ChatPage() {
           <WelcomePane sessionId={sessionId} />
         ) : null}
       </div>
-      <InterruptDialog />
     </AppShell>
   )
 }

@@ -1,15 +1,13 @@
 import { Plus, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { createUser, listUsers, patchUser, type UserOut } from '@/api/users'
+import { listUsers, patchUser, type UserOut } from '@/api/users'
 import AppShell from '@/components/layout/AppShell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import CreateUserDialog from './CreateUserDialog'
 
 const ROLES = ['admin', 'analyst', 'viewer']
 
@@ -18,8 +16,6 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [form, setForm] = useState({ username: '', password: '', role: 'analyst' })
-  const [creating, setCreating] = useState(false)
 
   async function refresh() {
     setLoading(true)
@@ -36,21 +32,6 @@ export default function UsersPage() {
   useEffect(() => {
     void refresh()
   }, [])
-
-  async function onCreate() {
-    setCreating(true)
-    setError(null)
-    try {
-      await createUser({ ...form })
-      setDialogOpen(false)
-      setForm({ username: '', password: '', role: 'analyst' })
-      await refresh()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '创建失败')
-    } finally {
-      setCreating(false)
-    }
-  }
 
   async function toggleActive(row: UserOut) {
     setError(null)
@@ -160,58 +141,7 @@ export default function UsersPage() {
           </div>
         </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>创建用户</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="new-username">用户名</Label>
-                <Input
-                  id="new-username"
-                  value={form.username}
-                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="new-password">密码</Label>
-                <Input
-                  id="new-password"
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>角色</Label>
-                <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v }))}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ROLES.map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {r}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                取消
-              </Button>
-              <Button
-                disabled={creating || !form.username || !form.password}
-                onClick={() => void onCreate()}
-              >
-                {creating ? '创建中…' : '创建'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <CreateUserDialog open={dialogOpen} onOpenChange={setDialogOpen} onSaved={refresh} />
       </div>
     </AppShell>
   )

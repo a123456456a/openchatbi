@@ -23,6 +23,9 @@ def _init_sql_example_retriever(catalog, vector_db_path: str | None = None):
     sql_example_dict = {q: (sql, table) for q, sql, table in sql_examples}
 
     texts = list(sql_example_dict.keys())
+    if not texts:
+        texts = [""]
+
     vector_db = create_vector_db(
         texts,
         get_embedding_model(),
@@ -161,7 +164,7 @@ def _init_table_selection_example_dict(catalog, vector_db_path: str | None = Non
         tuple: (retriever, table_selection_example_dict)
     """
     sql_examples = catalog.get_table_selection_examples()
-    table_selection_example_dict = dict(sql_examples)
+    table_selection_example_dict = {q: tables for q, tables in sql_examples if str(q or "").strip()}
 
     texts = list(table_selection_example_dict.keys())
     if not texts:

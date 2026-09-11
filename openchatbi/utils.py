@@ -348,8 +348,8 @@ class SimpleStore(VectorStore):
 
         # Tokenize texts and create BM25 index
         self.tokenized_corpus = [self._tokenize(text) for text in texts]
-        # BM25Okapi doesn't support empty corpus, so set to None if empty
-        self.bm25: BM25Okapi | None = BM25Okapi(self.tokenized_corpus) if texts else None
+        self.bm25: BM25Okapi | None = None
+        self._rebuild_bm25()
 
     def _tokenize(self, text: str) -> list[str]:
         """Tokenize text for BM25 indexing using TextSegmenter.
@@ -361,6 +361,17 @@ class SimpleStore(VectorStore):
             List of tokens.
         """
         return _segmenter.cut(text)
+
+    def _rebuild_bm25(self) -> None:
+        """Rebuild BM25 safely for empty or blank-only corpora."""
+        # BM25Okapi rejects an empty corpus, and ZeroDivisionError's when every
+        # document tokenizes to [] (e.g. texts=[""] after an empty catalog sync).
+        usable = [tokens for tokens in self.tokenized_corpus if tokens]
+        if not self.tokenized_corpus or not usable:
+            self.bm25 = None
+            return
+        safe_corpus = [tokens if tokens else ["__empty__"] for tokens in self.tokenized_corpus]
+        self.bm25 = BM25Okapi(safe_corpus)
 
     def similarity_search(self, query: str, k: int = 4, **kwargs: Any) -> list[Document]:
         """Search for documents similar to the query using BM25.
@@ -464,7 +475,7 @@ class SimpleStore(VectorStore):
         # Update BM25 index
         new_tokenized = [self._tokenize(text) for text in texts]
         self.tokenized_corpus.extend(new_tokenized)
-        self.bm25 = BM25Okapi(self.tokenized_corpus)
+        self._rebuild_bm25()
 
         return ids
 
@@ -496,10 +507,7 @@ class SimpleStore(VectorStore):
             del self.tokenized_corpus[idx]
 
         # Rebuild BM25 index
-        if self.tokenized_corpus:
-            self.bm25 = BM25Okapi(self.tokenized_corpus)
-        else:
-            self.bm25 = None
+        self._rebuild_bm25()
 
         return True
 

@@ -212,7 +212,13 @@ def test_activate_applies_to_running_openchatbi_config(client):
     fake_config = MagicMock()
     fake_config.catalog_store = fake_catalog_store
 
-    with patch("openchatbi.config.get", return_value=fake_config):
+    with (
+        patch("openchatbi.config.get", return_value=fake_config),
+        patch(
+            "openchatbi.catalog.catalog_loader.sync_catalog_from_data_warehouse", return_value=True
+        ) as sync_mock,
+        patch("openchatbi.catalog.catalog_loader.reload_catalog_indexes") as reload_mock,
+    ):
         r = client.post(
             f"/api/admin/database-connections/{a['id']}/activate", headers=_auth(tok["access_token"])
         )
@@ -221,3 +227,6 @@ def test_activate_applies_to_running_openchatbi_config(client):
     applied_config = fake_catalog_store.set_data_warehouse_config.call_args[0][0]
     assert applied_config["uri"].startswith("mysql+pymysql://reader:")
     assert fake_config.data_warehouse_config == applied_config
+    assert fake_config.dialect == "mysql"
+    sync_mock.assert_called_once_with(fake_catalog_store)
+    reload_mock.assert_called_once_with(fake_catalog_store)
