@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type { ChatStep } from '@/types/stream'
 import {
   assistantCopyText,
+  isRedundantToolResult,
+  nonFileToolSteps,
   processSteps,
   stepTitle,
   toolBodyText,
@@ -56,6 +58,27 @@ describe('chatSteps', () => {
     expect(stepTitle(mixed[4])).toBe('text2sql')
     expect(stepTitle(mixed[5])).toBe('search_schema 失败')
     expect(stepTitle(mixed[3])).toBe('查询')
+  })
+
+  it('suppresses the redundant text2sql raw result but keeps its errors', () => {
+    const text2sqlResult = step({
+      kind: 'tool_result',
+      data: { tool: 'text2sql', result: 'SQL Query:\n```sql\nSELECT 1\n```' },
+    })
+    const text2sqlError = step({
+      kind: 'tool_error',
+      data: { tool: 'text2sql', error: 'boom' },
+    })
+    const otherResult = step({
+      kind: 'tool_result',
+      data: { tool: 'search_knowledge', result: '{}' },
+    })
+
+    expect(isRedundantToolResult(text2sqlResult)).toBe(true)
+    expect(isRedundantToolResult(text2sqlError)).toBe(false)
+    expect(isRedundantToolResult(otherResult)).toBe(false)
+
+    expect(nonFileToolSteps([text2sqlResult, text2sqlError, otherResult])).toEqual([text2sqlError, otherResult])
   })
 
   it('includes tool bodies in the copyable answer text', () => {

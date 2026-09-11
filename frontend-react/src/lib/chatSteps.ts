@@ -43,6 +43,20 @@ export function isFileResultStep(step: ChatStep): boolean {
   return extractFileDownload(step) !== null
 }
 
+/** Tool names whose successful result is already surfaced through a dedicated UI
+ * element, so re-rendering the raw tool payload inline would just be noisy
+ * duplication (e.g. `text2sql` returns a `"SQL Query:\n...\nQuery Results
+ * (CSV format):\n..."` blob that duplicates the chart/table already rendered
+ * from its `visualization` step). Errors from these tools are still shown —
+ * only the successful/raw payload is suppressed. */
+const REDUNDANT_RESULT_TOOL_NAMES = new Set(['text2sql'])
+
+export function isRedundantToolResult(step: ChatStep): boolean {
+  if (step.kind !== 'tool_result') return false
+  const tool = typeof step.data?.tool === 'string' ? step.data.tool : ''
+  return REDUNDANT_RESULT_TOOL_NAMES.has(tool)
+}
+
 /** SQL / tables / rewrite / confidence — intermediate process, stays in the collapsed "过程" panel above the body.
  * Visualization and file-download results are excluded: they render inline in the main body instead. */
 export function processSteps(steps: ChatStep[]): ChatStep[] {
@@ -64,9 +78,11 @@ export function fileResultSteps(steps: ChatStep[]): ChatStep[] {
   return steps.filter((s) => isToolStep(s) && isFileResultStep(s))
 }
 
-/** Non-file tool results — rendered inline as markdown text, and again in the collapsed panel below. */
+/** Non-file tool results — rendered inline as markdown text, and again in the collapsed panel below.
+ * Excludes redundant raw payloads (see `isRedundantToolResult`) whose content is already
+ * shown through a dedicated UI element. */
 export function nonFileToolSteps(steps: ChatStep[]): ChatStep[] {
-  return steps.filter((s) => isToolStep(s) && !isFileResultStep(s))
+  return steps.filter((s) => isToolStep(s) && !isFileResultStep(s) && !isRedundantToolResult(s))
 }
 
 /** Full tool payload for the answer body (prefers `data.result` / `data.error` over the truncated preview). */

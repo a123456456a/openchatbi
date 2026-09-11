@@ -46,16 +46,64 @@ describe('MessageList tool body', () => {
 
     render(<MessageList messages={messages} />)
 
-    // Final answer body and inline tool results (charts/files/text) are shown.
+    // Final answer body is shown.
     expect(screen.getByText('订单总数是 1234')).toBeVisible()
-    expect(screen.getByText("[{'total': 1234}]")).toBeVisible()
 
-    // Thinking and intermediate process steps (SQL, tool-call invocations) are not rendered.
+    // Thinking, intermediate process steps (SQL, tool-call invocations), and the raw
+    // text2sql tool payload are not rendered — the query results are already shown
+    // via the dedicated visualization/chart step, and the raw dump is just clutter.
     expect(screen.queryByText('先查一下')).not.toBeInTheDocument()
     expect(screen.queryByText('SELECT COUNT(*)')).not.toBeInTheDocument()
     expect(screen.queryByText('Using tool: text2sql')).not.toBeInTheDocument()
+    expect(screen.queryByText("[{'total': 1234}]")).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /生成 SQL/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^text2sql$/ })).not.toBeInTheDocument()
+  })
+
+  it('still shows a non-text2sql tool result inline (not suppressed)', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'a4',
+        role: 'assistant',
+        content: '已完成分析',
+        thinking: '',
+        steps: [
+          step({
+            id: 't3',
+            kind: 'tool_result',
+            text: 'preview',
+            data: { tool: 'search_knowledge', result: '{"columns": []}' },
+          }),
+        ],
+      },
+    ]
+
+    render(<MessageList messages={messages} />)
+
+    expect(screen.getByText('{"columns": []}')).toBeVisible()
+  })
+
+  it('still shows a text2sql tool error inline (only the successful raw result is suppressed)', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'a5',
+        role: 'assistant',
+        content: '出错了',
+        thinking: '',
+        steps: [
+          step({
+            id: 't4',
+            kind: 'tool_error',
+            text: 'preview',
+            data: { tool: 'text2sql', error: 'Error occurred when calling Text2SQL tool.' },
+          }),
+        ],
+      },
+    ]
+
+    render(<MessageList messages={messages} />)
+
+    expect(screen.getByText('Error occurred when calling Text2SQL tool.')).toBeVisible()
   })
 
   it('renders a visualization step as an inline chart, not inside the collapsed process panel', () => {
