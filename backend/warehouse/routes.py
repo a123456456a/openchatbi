@@ -1,19 +1,31 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from backend.auth.deps import require_roles
+from backend.auth.deps import get_current_user, require_roles
 from backend.auth.models import User
 from backend.db import get_db
 from backend.warehouse import service
+from backend.warehouse.gate import warehouse_runtime_status
 from backend.warehouse.schemas import (
     ConnectionIn,
     ConnectionOut,
     ConnectionsResponse,
     ConnectionUpdate,
     TestConnectionResult,
+    WarehouseStatusOut,
 )
 
 warehouse_router = APIRouter(prefix="/api/admin/database-connections", tags=["database-connections"])
+warehouse_status_router = APIRouter(prefix="/api", tags=["warehouse"])
+
+
+@warehouse_status_router.get("/warehouse/status", response_model=WarehouseStatusOut)
+def get_warehouse_status(
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> WarehouseStatusOut:
+    """Return whether chat is in demo mode (for the 「演示数据」 banner)."""
+    return WarehouseStatusOut(**warehouse_runtime_status(db))
 
 
 @warehouse_router.get("", response_model=ConnectionsResponse)

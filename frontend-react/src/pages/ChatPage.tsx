@@ -8,16 +8,21 @@ import InterruptPrompt from '@/components/chat/InterruptPrompt'
 import MessageList from '@/components/chat/MessageList'
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 
 /** Must match `MISSING_LLM_SETTINGS_DETAIL` in `backend/chat/routes.py`. */
 const MISSING_LLM_SETTINGS_DETAIL = '请先在设置中配置模型'
+/** Must match `MISSING_WAREHOUSE_DETAIL` in `backend/warehouse/gate.py`. */
+const MISSING_WAREHOUSE_DETAIL = '请先在管理端激活数仓'
 
 function ChatErrorBanner() {
+  const navigate = useNavigate()
   const error = useChatStore((s) => s.error)
   const openSettings = useSettingsStore((s) => s.openSettings)
+  const role = useAuthStore((s) => s.role)
   if (!error) return null
 
   return (
@@ -28,6 +33,13 @@ function ChatErrorBanner() {
           <AlertAction>
             <Button size="sm" variant="outline" onClick={openSettings}>
               去设置
+            </Button>
+          </AlertAction>
+        )}
+        {error === MISSING_WAREHOUSE_DETAIL && role === 'admin' && (
+          <AlertAction>
+            <Button size="sm" variant="outline" onClick={() => navigate('/admin/databases')}>
+              去激活数仓
             </Button>
           </AlertAction>
         )}
@@ -99,11 +111,13 @@ function ActiveChatComposer({ sessionId }: { sessionId: string }) {
 }
 
 function WelcomePane({ sessionId }: { sessionId: string }) {
+  const navigate = useNavigate()
   const streaming = useChatStore((s) => s.streaming)
   const send = useChatStore((s) => s.send)
   const stop = useChatStore((s) => s.stop)
   const error = useChatStore((s) => s.error)
   const openSettings = useSettingsStore((s) => s.openSettings)
+  const role = useAuthStore((s) => s.role)
   const [input, setInput] = useState('')
 
   useEffect(() => {
@@ -128,6 +142,13 @@ function WelcomePane({ sessionId }: { sessionId: string }) {
               <AlertAction>
                 <Button size="sm" variant="outline" onClick={openSettings}>
                   去设置
+                </Button>
+              </AlertAction>
+            )}
+            {error === MISSING_WAREHOUSE_DETAIL && role === 'admin' && (
+              <AlertAction>
+                <Button size="sm" variant="outline" onClick={() => navigate('/admin/databases')}>
+                  去激活数仓
                 </Button>
               </AlertAction>
             )}

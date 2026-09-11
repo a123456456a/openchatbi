@@ -6,6 +6,7 @@ import pytest
 
 from backend.config import (
     Settings,
+    demo_warehouse_allowed,
     get_settings,
     insecure_defaults_allowed,
     is_insecure_jwt_secret,
@@ -109,3 +110,24 @@ def test_openchatbi_test_mode_permits_demo_secret(monkeypatch):
 
     settings = Settings()
     assert settings.jwt_secret == "dev-only-change-me"
+
+
+def test_demo_warehouse_allowed_helper():
+    assert demo_warehouse_allowed(True, "production")
+    assert demo_warehouse_allowed(False, "development")
+    assert not demo_warehouse_allowed(False, "production")
+
+
+def test_allow_demo_warehouse_setting(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "prod-grade-secret-value-9f3a")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("ALLOW_INSECURE_DEFAULTS", "false")
+    monkeypatch.setenv("ALLOW_DEMO_WAREHOUSE", "true")
+    monkeypatch.delenv("OPENCHATBI_TEST_MODE", raising=False)
+
+    settings = Settings()
+    assert settings.allow_demo_warehouse is True
+    assert demo_warehouse_allowed(settings.allow_demo_warehouse, settings.app_env)
+
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("OPENCHATBI_TEST_MODE", "true")

@@ -16,7 +16,7 @@ from backend.llm.routes import llm_settings_router
 from backend.users.routes import download_router, users_router
 from backend.validation import redact_sensitive_fields
 from backend.warehouse import service as warehouse_service
-from backend.warehouse.routes import warehouse_router
+from backend.warehouse.routes import warehouse_router, warehouse_status_router
 
 
 @asynccontextmanager
@@ -57,6 +57,7 @@ app.include_router(users_router)
 app.include_router(download_router)
 app.include_router(llm_settings_router)
 app.include_router(warehouse_router)
+app.include_router(warehouse_status_router)
 
 
 @app.get("/health")
