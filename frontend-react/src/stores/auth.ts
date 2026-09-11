@@ -2,6 +2,9 @@ import { create } from 'zustand'
 
 import { bootstrapAdmin, fetchUserInfo, passwordGrant, refreshGrant, revokeToken, type TokenResponse } from '@/api/oauth'
 
+import { useChatStore } from './chat'
+import { useSessionsStore } from './sessions'
+
 export const REFRESH_KEY = 'ocbi_refresh'
 
 type AuthState = {
@@ -21,6 +24,16 @@ type AuthState = {
 /** Shared across all callers (router, http, chat) so rotated refresh tokens aren't raced. */
 let refreshInFlight: Promise<boolean> | null = null
 
+function resetChatUi() {
+  useChatStore.setState({
+    sessionId: null,
+    messages: [],
+    streaming: false,
+    lastInterrupt: null,
+    error: null,
+  })
+}
+
 export const useAuthStore = create<AuthState>((set, get) => {
   function getStoredRefresh(): string | null {
     return localStorage.getItem(REFRESH_KEY)
@@ -35,9 +48,13 @@ export const useAuthStore = create<AuthState>((set, get) => {
       username: nameHint ?? state.username,
       isAuthenticated: true,
     }))
+    useSessionsStore.getState().bindUser(tok.user_id)
   }
 
   function clearSession() {
+    // Prefer sessions-store active user (source of truth for scoped keys).
+    useSessionsStore.getState().clearActiveUserLocalData(get().userId)
+    resetChatUi()
     localStorage.removeItem(REFRESH_KEY)
     set({
       accessToken: null,
@@ -54,6 +71,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
     try {
       const info = await fetchUserInfo(tok.access_token)
       set({ username: info.username, role: info.role, userId: info.user_id })
+      useSessionsStore.getState().bindUser(info.user_id)
     } catch {
       /* token already applied; userinfo is best-effort */
     }
@@ -71,6 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const info = await fetchUserInfo(tok.access_token)
         set({ username: info.username, role: info.role, userId: info.user_id })
+        useSessionsStore.getState().bindUser(info.user_id)
       } catch {
         /* ignore */
       }
