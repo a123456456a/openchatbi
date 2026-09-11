@@ -6,8 +6,11 @@ bi_config_file: example/bi.yaml
 enable_sql_result_limit: true
 sql_result_limit: 10000
 
-# Opt-in application-layer read-only guard; keep using read-only warehouse credentials.
-enable_fail_closed_sql_guard: false
+# Production-safety defaults: fail-closed SQL guard + HITL confidence gate.
+# Keep using read-only warehouse credentials; the guard is defense in depth.
+enable_fail_closed_sql_guard: true
+enable_confidence_gate: true
+sql_confidence_threshold: 0.7
 
 python_executor: docker
 
