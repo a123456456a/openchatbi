@@ -7,7 +7,7 @@ OpenChatBI 的 React 并行前端（与 `frontend/`（Vue）对照实现，同�
 - 参见设计文档：`docs/superpowers/specs/2026-09-10-frontend-react-dual-track-design.md`
 - 参见实施计划：`docs/superpowers/plans/2026-09-10-frontend-react-dual-track.md`
 - 本项目是**并行对照前端**，不替换默认入口。默认入口仍为 `frontend/`（Vue，端口 5173）。
-- 与 Vue 前端共享的后端契约：`/oauth/*`、`/api/*`、NDJSON 流式协议；localStorage key 与 Vue 保持一致（`ocbi_refresh`、`ocbi_sessions`），方便对照调试。
+- 与 Vue 前端共享的后端契约：`/oauth/*`、`/api/*`、NDJSON 流式协议；localStorage key 与 Vue 保持一致（`ocbi_refresh`、`ocbi_sessions:<user_id>`、`ocbi_session_messages:<user_id>`），方便对照调试。
 
 ## 技术栈
 

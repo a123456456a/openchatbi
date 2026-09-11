@@ -10,11 +10,20 @@ vi.mock('@/api/oauth', () => ({
 
 import { fetchUserInfo, refreshGrant } from '@/api/oauth'
 import { REFRESH_KEY, useAuthStore } from './auth'
+import {
+  flushSessionMessagesPersist,
+  resetSessionMessagesCache,
+  sessionMessagesKeyForUser,
+  sessionsKeyForUser,
+  useSessionsStore,
+} from './sessions'
 
 describe('useAuthStore.refresh', () => {
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem(REFRESH_KEY, 'rt-1')
+    resetSessionMessagesCache()
+    useSessionsStore.setState({ activeUserId: null, sessions: [] })
     useAuthStore.setState({
       accessToken: null,
       userId: null,
@@ -56,6 +65,7 @@ describe('useAuthStore.refresh', () => {
     expect(refreshGrant).toHaveBeenCalledTimes(1)
     expect(useAuthStore.getState().accessToken).toBe('at-1')
     expect(localStorage.getItem(REFRESH_KEY)).toBe('rt-2')
+    expect(useSessionsStore.getState().activeUserId).toBe('u1')
   })
 
   it('clears session and returns false when no refresh token is stored', async () => {
@@ -70,5 +80,48 @@ describe('useAuthStore.refresh', () => {
     const ok = await useAuthStore.getState().refresh()
     expect(ok).toBe(false)
     expect(localStorage.getItem(REFRESH_KEY)).toBeNull()
+  })
+})
+
+describe('useAuthStore.clearSession user isolation', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    resetSessionMessagesCache()
+    useSessionsStore.setState({ activeUserId: null, sessions: [] })
+    useAuthStore.setState({
+      accessToken: 'at',
+      userId: 'user-a',
+      username: 'alice',
+      role: 'user',
+      isAuthenticated: true,
+    })
+    useSessionsStore.getState().bindUser('user-a')
+    useSessionsStore.getState().ensure('s1')
+    useSessionsStore.getState().setMessages('s1', [
+      { id: 'm1', role: 'user', content: 'secret', thinking: '', steps: [] },
+    ])
+    flushSessionMessagesPersist()
+    localStorage.setItem(REFRESH_KEY, 'rt-1')
+  })
+
+  it('clears user-scoped session localStorage on logout/clearSession', () => {
+    expect(localStorage.getItem(sessionsKeyForUser('user-a'))).toBeTruthy()
+    expect(localStorage.getItem(sessionMessagesKeyForUser('user-a'))).toBeTruthy()
+
+    useAuthStore.getState().clearSession()
+
+    expect(localStorage.getItem(sessionsKeyForUser('user-a'))).toBeNull()
+    expect(localStorage.getItem(sessionMessagesKeyForUser('user-a'))).toBeNull()
+    expect(localStorage.getItem(REFRESH_KEY)).toBeNull()
+    expect(useSessionsStore.getState().activeUserId).toBeNull()
+    expect(useSessionsStore.getState().sessions).toEqual([])
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+
+  it('after clear, binding another user does not show the previous account sessions', () => {
+    useAuthStore.getState().clearSession()
+    useSessionsStore.getState().bindUser('user-b')
+    expect(useSessionsStore.getState().sessions).toEqual([])
+    expect(useSessionsStore.getState().getMessages('s1')).toEqual([])
   })
 })

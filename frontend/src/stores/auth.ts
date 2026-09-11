@@ -9,6 +9,8 @@ import {
   revokeToken,
   type TokenResponse,
 } from '../api/oauth'
+import { useChatStore } from './chat'
+import { useSessionsStore } from './sessions'
 
 const REFRESH_KEY = 'ocbi_refresh'
 
@@ -27,15 +29,28 @@ export const useAuthStore = defineStore('auth', () => {
     return localStorage.getItem(REFRESH_KEY)
   }
 
+  function resetChatUi() {
+    const chat = useChatStore()
+    if (chat.streaming) chat.stop()
+    chat.sessionId = null
+    chat.messages = []
+    chat.lastInterrupt = null
+    chat.error = null
+    chat.streaming = false
+  }
+
   function applyTokens(tok: TokenResponse, nameHint?: string) {
     accessToken.value = tok.access_token
     userId.value = tok.user_id
     role.value = tok.role
     if (nameHint) username.value = nameHint
     localStorage.setItem(REFRESH_KEY, tok.refresh_token)
+    useSessionsStore().bindUser(tok.user_id)
   }
 
   function clearSession() {
+    useSessionsStore().clearActiveUserLocalData(userId.value)
+    resetChatUi()
     accessToken.value = null
     userId.value = null
     username.value = null
@@ -51,6 +66,7 @@ export const useAuthStore = defineStore('auth', () => {
       username.value = info.username
       role.value = info.role
       userId.value = info.user_id
+      useSessionsStore().bindUser(info.user_id)
     } catch {
       /* token already applied; userinfo is best-effort */
     }
@@ -70,6 +86,7 @@ export const useAuthStore = defineStore('auth', () => {
         username.value = info.username
         role.value = info.role
         userId.value = info.user_id
+        useSessionsStore().bindUser(info.user_id)
       } catch {
         /* ignore */
       }

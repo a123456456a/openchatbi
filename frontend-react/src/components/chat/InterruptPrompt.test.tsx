@@ -14,7 +14,8 @@ import InterruptPrompt from './InterruptPrompt'
 describe('InterruptPrompt', () => {
   beforeEach(() => {
     localStorage.clear()
-    useSessionsStore.setState({ sessions: [] })
+    useSessionsStore.setState({ activeUserId: null, sessions: [] })
+    useSessionsStore.getState().bindUser('test-user')
     useChatStore.setState({
       sessionId: 'session-1',
       messages: [],

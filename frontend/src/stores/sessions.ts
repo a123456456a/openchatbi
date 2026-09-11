@@ -10,14 +10,37 @@ export type SessionMeta = {
   archived?: boolean
 }
 
-export const SESSIONS_KEY = 'ocbi_sessions'
-export const SESSION_MESSAGES_KEY = 'ocbi_session_messages'
+/** Base prefixes; actual localStorage keys are scoped as `${prefix}:${userId}`. */
+export const SESSIONS_KEY_PREFIX = 'ocbi_sessions'
+export const SESSION_MESSAGES_KEY_PREFIX = 'ocbi_session_messages'
+
+/** Pre-isolation shared keys — scrubbed on logout so they cannot leak across accounts. */
+export const LEGACY_SESSIONS_KEY = 'ocbi_sessions'
+export const LEGACY_SESSION_MESSAGES_KEY = 'ocbi_session_messages'
+
+export function sessionsKeyForUser(userId: string): string {
+  return `${SESSIONS_KEY_PREFIX}:${userId}`
+}
+
+export function sessionMessagesKeyForUser(userId: string): string {
+  return `${SESSION_MESSAGES_KEY_PREFIX}:${userId}`
+}
+
+export function clearSessionLocalStorageForUser(userId: string) {
+  localStorage.removeItem(sessionsKeyForUser(userId))
+  localStorage.removeItem(sessionMessagesKeyForUser(userId))
+}
+
+export function scrubLegacySessionKeys() {
+  localStorage.removeItem(LEGACY_SESSIONS_KEY)
+  localStorage.removeItem(LEGACY_SESSION_MESSAGES_KEY)
+}
 
 type SessionMessagesMap = Record<string, ChatMessage[]>
 
-function load(): SessionMeta[] {
+function loadSessions(userId: string): SessionMeta[] {
   try {
-    const raw = localStorage.getItem(SESSIONS_KEY)
+    const raw = localStorage.getItem(sessionsKeyForUser(userId))
     if (!raw) return []
     return JSON.parse(raw) as SessionMeta[]
   } catch {
@@ -25,13 +48,13 @@ function load(): SessionMeta[] {
   }
 }
 
-function save(list: SessionMeta[]) {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(list))
+function saveSessions(userId: string, list: SessionMeta[]) {
+  localStorage.setItem(sessionsKeyForUser(userId), JSON.stringify(list))
 }
 
-function loadMessages(): SessionMessagesMap {
+function loadMessages(userId: string): SessionMessagesMap {
   try {
-    const raw = localStorage.getItem(SESSION_MESSAGES_KEY)
+    const raw = localStorage.getItem(sessionMessagesKeyForUser(userId))
     if (!raw) return {}
     return JSON.parse(raw) as SessionMessagesMap
   } catch {
@@ -39,14 +62,35 @@ function loadMessages(): SessionMessagesMap {
   }
 }
 
-function saveMessages(map: SessionMessagesMap) {
-  localStorage.setItem(SESSION_MESSAGES_KEY, JSON.stringify(map))
+function saveMessages(userId: string, map: SessionMessagesMap) {
+  localStorage.setItem(sessionMessagesKeyForUser(userId), JSON.stringify(map))
 }
 
 export const useSessionsStore = defineStore('sessions', () => {
-  const sessions = ref<SessionMeta[]>(load())
+  const activeUserId = ref<string | null>(null)
+  const sessions = ref<SessionMeta[]>([])
+
+  function bindUser(userId: string | null) {
+    if (activeUserId.value === userId) {
+      if (userId) sessions.value = loadSessions(userId)
+      return
+    }
+    activeUserId.value = userId
+    sessions.value = userId ? loadSessions(userId) : []
+  }
+
+  /** Logout path: delete this user's scoped keys and unbind in-memory state. */
+  function clearActiveUserLocalData(userIdHint?: string | null) {
+    const userId = activeUserId.value ?? userIdHint ?? null
+    if (userId) clearSessionLocalStorageForUser(userId)
+    scrubLegacySessionKeys()
+    activeUserId.value = null
+    sessions.value = []
+  }
 
   function upsert(id: string, title?: string) {
+    const userId = activeUserId.value
+    if (!userId) return
     const now = Date.now()
     const idx = sessions.value.findIndex((s) => s.id === id)
     if (idx >= 0) {
@@ -63,7 +107,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       })
     }
     sessions.value = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
-    save(sessions.value)
+    saveSessions(userId, sessions.value)
   }
 
   function ensure(id: string) {
@@ -71,36 +115,58 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   function getMessages(id: string): ChatMessage[] {
-    const map = loadMessages()
+    const userId = activeUserId.value
+    if (!userId) return []
+    const map = loadMessages(userId)
     return map[id] ?? []
   }
 
   function setMessages(id: string, messages: ChatMessage[]) {
-    const map = loadMessages()
+    const userId = activeUserId.value
+    if (!userId) return
+    const map = loadMessages(userId)
     map[id] = messages
-    saveMessages(map)
+    saveMessages(userId, map)
   }
 
   function archive(id: string) {
+    const userId = activeUserId.value
+    if (!userId) return
     sessions.value = sessions.value.map((s) => (s.id === id ? { ...s, archived: true } : s))
-    save(sessions.value)
+    saveSessions(userId, sessions.value)
   }
 
   function unarchive(id: string) {
+    const userId = activeUserId.value
+    if (!userId) return
     sessions.value = sessions.value.map((s) => (s.id === id ? { ...s, archived: false } : s))
-    save(sessions.value)
+    saveSessions(userId, sessions.value)
   }
 
   function remove(id: string) {
+    const userId = activeUserId.value
+    if (!userId) return
     sessions.value = sessions.value.filter((s) => s.id !== id)
-    save(sessions.value)
+    saveSessions(userId, sessions.value)
 
-    const map = loadMessages()
+    const map = loadMessages(userId)
     if (id in map) {
       delete map[id]
-      saveMessages(map)
+      saveMessages(userId, map)
     }
   }
 
-  return { sessions, upsert, ensure, getMessages, setMessages, archive, unarchive, remove }
+  return {
+    activeUserId,
+    sessions,
+    bindUser,
+    clearActiveUserLocalData,
+    upsert,
+    ensure,
+    getMessages,
+    setMessages,
+    archive,
+    unarchive,
+    remove,
+  }
 })

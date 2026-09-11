@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/api/chat', () => ({
   streamChat: vi.fn(),
+  cancelChatRun: vi.fn().mockResolvedValue(undefined),
+  abortChatInterrupt: vi.fn(),
 }))
 
 import { streamChat } from '@/api/chat'
@@ -13,7 +15,8 @@ describe('useChatStore session switching', () => {
   beforeEach(() => {
     localStorage.clear()
     resetSessionMessagesCache()
-    useSessionsStore.setState({ sessions: [] })
+    useSessionsStore.setState({ activeUserId: null, sessions: [] })
+    useSessionsStore.getState().bindUser('test-user')
     useChatStore.setState({ sessionId: null, messages: [], streaming: false, lastInterrupt: null, error: null })
     vi.mocked(streamChat).mockReset()
   })
