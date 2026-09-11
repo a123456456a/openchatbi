@@ -2,11 +2,22 @@
 import { ref } from 'vue'
 import { ChatDotRound, CircleCheck, DocumentCopy } from '@element-plus/icons-vue'
 
+import ChartView from './ChartView.vue'
+import FileDownloadCard from './FileDownloadCard.vue'
 import StepCollapse from './StepCollapse.vue'
 import ThinkingCollapse from './ThinkingCollapse.vue'
 import Markdown from '../common/Markdown.vue'
-import { assistantCopyText, processSteps, toolBodyText, toolSteps } from '../../lib/chatSteps'
-import type { ChatMessage } from '../../types/stream'
+import {
+  assistantCopyText,
+  extractFileDownload,
+  fileResultSteps,
+  nonFileToolSteps,
+  processSteps,
+  toolBodyText,
+  toolSteps,
+  visualizationSteps,
+} from '../../lib/chatSteps'
+import type { ChatMessage, ChatStep } from '../../types/stream'
 
 defineProps<{
   messages: ChatMessage[]
@@ -24,6 +35,20 @@ async function copyContent(id: string, text: string) {
   } catch {
     // clipboard unavailable — ignore
   }
+}
+
+function visualizationDsl(step: ChatStep): Record<string, unknown> {
+  const dsl = step.data?.visualization_dsl
+  return dsl && typeof dsl === 'object' ? (dsl as Record<string, unknown>) : {}
+}
+
+function csvData(step: ChatStep): string | undefined {
+  const data = step.data?.data
+  return typeof data === 'string' ? data : undefined
+}
+
+function hasInlineArtifacts(m: ChatMessage): boolean {
+  return Boolean(m.content) || toolSteps(m.steps).length > 0 || visualizationSteps(m.steps).length > 0
 }
 </script>
 
@@ -46,13 +71,26 @@ async function copyContent(id: string, text: string) {
           <ThinkingCollapse :thinking="m.thinking" :streaming="m.streaming" />
           <StepCollapse :steps="processSteps(m.steps)" />
 
-          <div v-if="m.content || toolSteps(m.steps).length" class="space-y-3 text-sm text-slate-800">
+          <!-- Main answer body: LLM text, then any tool-generated artifacts (charts, files,
+               raw tool results) rendered inline and in reading order — not hidden in a
+               collapsed "step" panel. -->
+          <div v-if="hasInlineArtifacts(m)" class="space-y-3 text-sm text-slate-800">
             <Markdown v-if="m.content" :text="m.content" />
-            <Markdown
-              v-for="s in toolSteps(m.steps)"
+
+            <ChartView
+              v-for="s in visualizationSteps(m.steps)"
               :key="s.id"
-              :text="toolBodyText(s)"
+              :visualization-dsl="visualizationDsl(s)"
+              :csv-data="csvData(s)"
             />
+
+            <FileDownloadCard
+              v-for="s in fileResultSteps(m.steps)"
+              :key="s.id"
+              v-bind="extractFileDownload(s)!"
+            />
+
+            <Markdown v-for="s in nonFileToolSteps(m.steps)" :key="s.id" :text="toolBodyText(s)" />
           </div>
           <div
             v-else-if="m.streaming && !m.thinking && m.steps.length === 0"
@@ -61,13 +99,10 @@ async function copyContent(id: string, text: string) {
             思考中…
           </div>
 
-          <StepCollapse :steps="toolSteps(m.steps)" :default-open="false" />
+          <StepCollapse :steps="nonFileToolSteps(m.steps)" :default-open="false" />
         </div>
 
-        <div
-          v-if="!m.streaming && (m.content || toolSteps(m.steps).length)"
-          class="mt-1.5 flex items-center gap-1"
-        >
+        <div v-if="!m.streaming && hasInlineArtifacts(m)" class="mt-1.5 flex items-center gap-1">
           <button
             type="button"
             aria-label="复制回答"
