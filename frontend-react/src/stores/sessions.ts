@@ -7,6 +7,12 @@ export type SessionMeta = {
   title: string
   updatedAt: number
   archived?: boolean
+  /**
+   * `active_connection_id` from `/api/warehouse/status` when this session was
+   * bound. `null` = demo / no active warehouse. `undefined` = not yet observed
+   * (legacy sessions); first status check binds silently.
+   */
+  warehouseConnectionId?: string | null
 }
 
 /** Base prefixes; actual localStorage keys are scoped as `${prefix}:${userId}`. */
@@ -129,6 +135,8 @@ type SessionsState = {
   archive: (id: string) => void
   unarchive: (id: string) => void
   remove: (id: string) => void
+  /** Stamp the warehouse identity this session was started / observed under. */
+  setWarehouseConnectionId: (id: string, warehouseConnectionId: string | null) => void
 }
 
 export const useSessionsStore = create<SessionsState>((set, get) => ({
@@ -228,6 +236,27 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       delete map[id]
       flushSessionMessagesPersist()
     }
+  },
+
+  setWarehouseConnectionId(id, warehouseConnectionId) {
+    const userId = get().activeUserId
+    if (!userId) return
+    const current = get().sessions
+    const idx = current.findIndex((s) => s.id === id)
+    if (idx < 0) {
+      // Ensure so a brand-new session from 「新开对话」 can be stamped immediately.
+      const now = Date.now()
+      const next = [{ id, title: '新会话', updatedAt: now, warehouseConnectionId }, ...current]
+      saveSessions(userId, next)
+      set({ sessions: next })
+      return
+    }
+    const existing = current[idx]!
+    if (existing.warehouseConnectionId === warehouseConnectionId) return
+    const next = [...current]
+    next[idx] = { ...existing, warehouseConnectionId }
+    saveSessions(userId, next)
+    set({ sessions: next })
   },
 }))
 

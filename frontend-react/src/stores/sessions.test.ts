@@ -119,4 +119,18 @@ describe('useSessionsStore', () => {
     expect(useSessionsStore.getState().sessions).toEqual([])
     expect(useSessionsStore.getState().getMessages('s1')).toEqual([])
   })
+
+  it('setWarehouseConnectionId stamps active_connection_id onto a session', () => {
+    const store = useSessionsStore.getState()
+    store.ensure('s1')
+    store.setWarehouseConnectionId('s1', 'wh-1')
+    expect(useSessionsStore.getState().sessions.find((s) => s.id === 's1')?.warehouseConnectionId).toBe(
+      'wh-1',
+    )
+    store.setWarehouseConnectionId('s1', null)
+    expect(useSessionsStore.getState().sessions.find((s) => s.id === 's1')?.warehouseConnectionId).toBe(
+      null,
+    )
+  })
+
 })

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import AppShell from '@/components/layout/AppShell'
+import StaleWarehouseSessionBanner from '@/components/common/StaleWarehouseSessionBanner'
 import ChatComposer from '@/components/chat/ChatComposer'
 import ChatWelcome from '@/components/chat/ChatWelcome'
 import InterruptPrompt from '@/components/chat/InterruptPrompt'
@@ -183,6 +184,7 @@ export default function ChatPage() {
   return (
     <AppShell>
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--color-background)]">
+        {sessionId ? <StaleWarehouseSessionBanner sessionId={sessionId} /> : null}
         {hasMessages && sessionId ? (
           <>
             <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-card)]/90 px-6 py-3 backdrop-blur-sm">

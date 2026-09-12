@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import AppShell from '../components/layout/AppShell.vue'
+import StaleWarehouseSessionBanner from '../components/common/StaleWarehouseSessionBanner.vue'
 import ChatComposer from '../components/chat/ChatComposer.vue'
 import ChatWelcome from '../components/chat/ChatWelcome.vue'
 import MessageList from '../components/chat/MessageList.vue'
@@ -68,6 +69,7 @@ function goActivateWarehouse() {
 <template>
   <AppShell>
     <div class="flex min-h-0 flex-1 flex-col bg-[var(--color-background)]">
+      <StaleWarehouseSessionBanner v-if="sessionId" :session-id="sessionId" />
       <header
         v-if="hasMessages"
         class="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-card)]/90 px-6 py-3 backdrop-blur-sm"
