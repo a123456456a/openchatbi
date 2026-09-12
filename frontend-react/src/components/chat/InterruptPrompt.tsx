@@ -31,7 +31,7 @@ export default function InterruptPrompt() {
     try {
       await abortChatInterrupt(sid, {
         getAccessToken: () => auth.accessToken,
-        getStoredRefresh: () => auth.refreshToken,
+        getStoredRefresh: () => auth.getStoredRefresh(),
         refresh: () => auth.refresh(),
       })
     } catch {
