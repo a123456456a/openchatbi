@@ -28,6 +28,7 @@ type SettingsState = {
   removeProvider: (provider: string) => Promise<void>
   /** Switch the active provider among already-configured ones (no key resend needed). */
   setActiveProvider: (provider: string) => Promise<void>
+  clearError: () => void
   openSettings: () => void
   closeSettings: () => void
   chatProvider: () => string | null
@@ -66,7 +67,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         },
       ],
     })
-    set({ activeProvider: data.active_provider, configs: data.configs, catalog: data.catalog })
+    set({ activeProvider: data.active_provider, configs: data.configs, catalog: data.catalog, error: null })
   },
 
   async removeProvider(provider) {
@@ -75,11 +76,25 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   async setActiveProvider(provider) {
-    const data = await saveLlmSettings({ active_provider: provider })
-    set({ activeProvider: data.active_provider, configs: data.configs, catalog: data.catalog })
+    set({ error: null })
+    try {
+      const data = await saveLlmSettings({ active_provider: provider })
+      // Only commit selection after the server acknowledges — avoids a fake success checkmark.
+      set({
+        activeProvider: data.active_provider,
+        configs: data.configs,
+        catalog: data.catalog,
+        error: null,
+      })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      set({ error: message })
+      throw e
+    }
   },
 
-  openSettings: () => set({ settingsOpen: true }),
+  clearError: () => set({ error: null }),
+  openSettings: () => set({ settingsOpen: true, error: null }),
   closeSettings: () => set({ settingsOpen: false }),
   /** Value to send on chat requests (`null` means backend default / active_provider). */
   chatProvider: () => get().activeProvider,

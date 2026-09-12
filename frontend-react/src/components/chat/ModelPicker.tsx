@@ -9,23 +9,23 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useSettingsStore } from '@/stores/settings'
-import { useAuthStore } from '@/stores/auth'
-import { canManageLlm } from '@/lib/roles'
 
 /** Inline model switcher shown at the end of the composer, mirroring the model chip
  * in the reference screenshot — lets the user flip between already-configured
  * providers without opening the full Settings dialog. Providers without a saved
  * API key aren't selectable here; picking one still requires the Settings dialog. */
 export default function ModelPicker() {
-  const role = useAuthStore((s) => s.role)
   const activeProvider = useSettingsStore((s) => s.activeProvider)
   const configs = useSettingsStore((s) => s.configs)
   const catalog = useSettingsStore((s) => s.catalog)
+  const error = useSettingsStore((s) => s.error)
   const load = useSettingsStore((s) => s.load)
   const setActiveProvider = useSettingsStore((s) => s.setActiveProvider)
+  const clearError = useSettingsStore((s) => s.clearError)
   const openSettings = useSettingsStore((s) => s.openSettings)
 
   const [switching, setSwitching] = useState<string | null>(null)
+  const [switchError, setSwitchError] = useState<string | null>(null)
 
   useEffect(() => {
     void load().catch(() => {
@@ -35,22 +35,22 @@ export default function ModelPicker() {
   }, [])
 
   const usable = configs.filter((c) => c.has_key)
-
-  if (!canManageLlm(role)) {
-    return null
-  }
   const activeConfig = usable.find((c) => c.provider === activeProvider)
   const activeLabel = activeConfig
     ? (catalog.find((m) => m.id === activeConfig.provider)?.label ?? activeConfig.provider)
     : null
 
+  const visibleError = switchError || error
+
   async function choose(provider: string) {
     if (provider === activeProvider || switching) return
     setSwitching(provider)
+    setSwitchError(null)
+    clearError()
     try {
       await setActiveProvider(provider)
-    } catch {
-      /* a stale/invalid provider surfaces as a normal chat error on next send */
+    } catch (e) {
+      setSwitchError(e instanceof Error ? e.message : '切换模型失败')
     } finally {
       setSwitching(null)
     }
@@ -69,36 +69,58 @@ export default function ModelPicker() {
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1 text-[13px] font-medium text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--color-muted)] hover:text-[var(--color-foreground)] data-open:text-[var(--color-foreground)]"
-        >
-          <span className="max-w-[8rem] truncate">{activeConfig?.model ?? activeLabel}</span>
-          <ChevronDown size={12} className="shrink-0" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
-        {usable.map((c) => {
-          const label = catalog.find((m) => m.id === c.provider)?.label ?? c.provider
-          return (
-            <DropdownMenuItem
-              key={c.provider}
-              onSelect={() => void choose(c.provider)}
-              disabled={switching === c.provider}
-            >
-              <span className="min-w-0 flex-1 truncate">
-                {label}
-                <span className="ml-1.5 text-[var(--color-muted-foreground)]">{c.model}</span>
-              </span>
-              {c.provider === activeProvider && <Check size={14} className="text-[var(--color-primary)]" />}
-            </DropdownMenuItem>
-          )
-        })}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={openSettings}>管理模型…</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex max-w-[16rem] flex-col items-end gap-0.5">
+      <DropdownMenu
+        onOpenChange={(open) => {
+          if (open) {
+            setSwitchError(null)
+            clearError()
+          }
+        }}
+      >
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-invalid={visibleError ? true : undefined}
+            className="flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1 text-[13px] font-medium text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--color-muted)] hover:text-[var(--color-foreground)] data-open:text-[var(--color-foreground)]"
+          >
+            <span className="max-w-[8rem] truncate">{activeConfig?.model ?? activeLabel}</span>
+            <ChevronDown size={12} className="shrink-0" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-56">
+          {usable.map((c) => {
+            const label = catalog.find((m) => m.id === c.provider)?.label ?? c.provider
+            return (
+              <DropdownMenuItem
+                key={c.provider}
+                onSelect={() => void choose(c.provider)}
+                disabled={switching === c.provider}
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {label}
+                  <span className="ml-1.5 text-[var(--color-muted-foreground)]">{c.model}</span>
+                </span>
+                {c.provider === activeProvider && <Check size={14} className="text-[var(--color-primary)]" />}
+              </DropdownMenuItem>
+            )
+          })}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={openSettings}>管理模型…</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {visibleError ? (
+        <p className="px-1 text-right text-[11px] leading-snug text-[var(--color-destructive)]" role="alert">
+          {visibleError}
+          <button
+            type="button"
+            className="ml-1 underline underline-offset-2 hover:opacity-80"
+            onClick={openSettings}
+          >
+            去设置
+          </button>
+        </p>
+      ) : null}
+    </div>
   )
 }

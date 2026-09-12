@@ -20,6 +20,7 @@ export default function SettingsDialog() {
   const catalog = useSettingsStore((s) => s.catalog)
   const configs = useSettingsStore((s) => s.configs)
   const loading = useSettingsStore((s) => s.loading)
+  const storeError = useSettingsStore((s) => s.error)
   const role = useAuthStore((s) => s.role)
   const allowEdit = canManageLlm(role)
 
@@ -206,7 +207,7 @@ export default function SettingsDialog() {
             )}
           </div>
 
-          {error && <p className="text-sm text-[var(--color-destructive)]">{error}</p>}
+          {(error || storeError) && <p className="text-sm text-[var(--color-destructive)]">{error || storeError}</p>}
           {notice && !error && <p className="text-sm text-[var(--color-primary)]">{notice}</p>}
         </div>
 
