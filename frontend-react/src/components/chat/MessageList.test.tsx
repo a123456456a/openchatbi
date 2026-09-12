@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChatMessage, ChatStep } from '@/types/stream'
+import { useAuthStore } from '@/stores/auth'
 import MessageList from './MessageList'
 
 // jsdom has no canvas 2D context, so ECharts can't actually paint in tests; stub the chart
@@ -139,6 +140,7 @@ describe('MessageList tool body', () => {
   })
 
   it('renders a save_report tool result as an inline download card, not a raw link', () => {
+    useAuthStore.setState({ role: 'analyst', isAuthenticated: true })
     const messages: ChatMessage[] = [
       {
         id: 'a3',

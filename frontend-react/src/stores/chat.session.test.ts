@@ -8,12 +8,14 @@ vi.mock('@/api/chat', () => ({
 
 import { streamChat } from '@/api/chat'
 import type { StreamEvent } from '@/types/stream'
+import { useAuthStore } from './auth'
 import { useChatStore } from './chat'
 import { resetSessionMessagesCache, useSessionsStore } from './sessions'
 
 describe('useChatStore session switching', () => {
   beforeEach(() => {
     localStorage.clear()
+    useAuthStore.setState({ role: 'analyst', isAuthenticated: true, accessToken: 't', userId: 'u', username: 'a' })
     resetSessionMessagesCache()
     useSessionsStore.setState({ activeUserId: null, sessions: [] })
     useSessionsStore.getState().bindUser('test-user')
