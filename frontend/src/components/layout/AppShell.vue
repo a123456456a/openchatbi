@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ChatDotRound, Delete, MoreFilled, Plus, RefreshLeft, Search } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
+import { fetchWarehouseStatus } from '../../api/warehouseStatus'
 import DemoWarehouseBanner from '../common/DemoWarehouseBanner.vue'
 import SettingsDialog from './SettingsDialog.vue'
 import SidebarFooter from './SidebarFooter.vue'
+import {
+  STALE_WAREHOUSE_SESSION_MESSAGE,
+  STALE_WAREHOUSE_SIDEBAR_BADGE,
+  isSessionWarehouseStale,
+} from '../../lib/sessionWarehouse'
+import { useAuthStore } from '../../stores/auth'
 import { useSessionsStore, type SessionMeta } from '../../stores/sessions'
 
 /** Groups sessions into 今天/昨天/更早 buckets by `updatedAt`, newest first within each. */
@@ -35,12 +42,62 @@ function groupByDay(list: SessionMeta[]): { label: string; sessions: SessionMeta
 const route = useRoute()
 const router = useRouter()
 const sessionsStore = useSessionsStore()
+const auth = useAuthStore()
 
 const query = ref('')
 const normalizedQuery = computed(() => query.value.trim().toLowerCase())
 function matchesQuery(s: SessionMeta): boolean {
   return !normalizedQuery.value || s.title.toLowerCase().includes(normalizedQuery.value)
 }
+
+/** `undefined` until `/api/warehouse/status` resolves; then mirrors `active_connection_id`. */
+const activeWarehouseId = ref<string | null | undefined>(undefined)
+
+async function refreshWarehouseStatus() {
+  if (!auth.isAuthenticated) {
+    activeWarehouseId.value = undefined
+    return
+  }
+  try {
+    const status = await fetchWarehouseStatus()
+    activeWarehouseId.value = status.active_connection_id
+  } catch {
+    // Soft-fail: keep previous known id so we do not flash false positives.
+  }
+}
+
+function onFocus() {
+  void refreshWarehouseStatus()
+}
+
+function onVisibility() {
+  if (document.visibilityState === 'visible') void refreshWarehouseStatus()
+}
+
+onMounted(() => {
+  void refreshWarehouseStatus()
+  window.addEventListener('focus', onFocus)
+  document.addEventListener('visibilitychange', onVisibility)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('focus', onFocus)
+  document.removeEventListener('visibilitychange', onVisibility)
+})
+
+watch(
+  () => auth.isAuthenticated,
+  () => {
+    void refreshWarehouseStatus()
+  },
+)
+
+function sessionIsStale(s: SessionMeta) {
+  return isSessionWarehouseStale(s.warehouseConnectionId, activeWarehouseId.value)
+}
+
+const staleBadge = STALE_WAREHOUSE_SIDEBAR_BADGE
+const staleMessage = STALE_WAREHOUSE_SESSION_MESSAGE
 
 const activeSessions = computed(() => sessionsStore.sessions.filter((s) => !s.archived && matchesQuery(s)))
 const archivedSessions = computed(() => sessionsStore.sessions.filter((s) => s.archived && matchesQuery(s)))
@@ -124,18 +181,40 @@ async function confirmDelete(id: string) {
           <div class="px-3 py-1 text-[11px] font-semibold tracking-wide uppercase text-[var(--color-muted-foreground)]">
             {{ group.label }}
           </div>
-          <div v-for="s in group.sessions" :key="s.id" class="mb-0.5 flex items-center gap-1">
+          <div
+            v-for="s in group.sessions"
+            :key="s.id"
+            class="mb-0.5 flex items-center gap-1"
+            :class="sessionIsStale(s) ? 'opacity-70' : ''"
+          >
             <button
               type="button"
               class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200"
-              :class="
+              :class="[
+                sessionIsStale(s)
+                  ? 'text-[var(--color-muted-foreground)]'
+                  : route.params.sessionId === s.id
+                    ? 'font-medium text-[var(--color-primary)]'
+                    : 'text-slate-600',
                 route.params.sessionId === s.id
-                  ? 'bg-[var(--color-muted)] font-medium text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
-                  : 'text-slate-600 hover:bg-slate-50'
-              "
+                  ? 'bg-[var(--color-muted)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
+                  : 'hover:bg-slate-50',
+              ]"
+              :title="sessionIsStale(s) ? staleMessage : undefined"
+              :aria-label="sessionIsStale(s) ? `${s.title}（${staleBadge}）` : undefined"
               @click="openSession(s.id)"
             >
               <span class="truncate">{{ s.title }}</span>
+              <el-tag
+                v-if="sessionIsStale(s)"
+                size="small"
+                type="warning"
+                effect="light"
+                round
+                class="!ml-auto shrink-0 !border-amber-200 !bg-amber-50 !text-[10px] !text-amber-800"
+              >
+                {{ staleBadge }}
+              </el-tag>
             </button>
             <el-dropdown trigger="click" @command="onSessionCommand">
               <button
@@ -162,15 +241,30 @@ async function confirmDelete(id: string) {
             <div
               v-for="s in archivedSessions"
               :key="s.id"
-              class="flex min-w-0 items-center gap-1 rounded-lg px-3 py-2 text-sm text-slate-500"
-              :class="route.params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-slate-50'"
+              class="flex min-w-0 items-center gap-1 rounded-lg px-3 py-2 text-sm"
+              :class="[
+                sessionIsStale(s) ? 'text-[var(--color-muted-foreground)] opacity-70' : 'text-slate-500',
+                route.params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-slate-50',
+              ]"
             >
               <button
                 type="button"
-                class="min-w-0 flex-1 cursor-pointer truncate text-left"
+                class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 truncate text-left"
+                :title="sessionIsStale(s) ? staleMessage : undefined"
+                :aria-label="sessionIsStale(s) ? `${s.title}（${staleBadge}）` : undefined"
                 @click="openSession(s.id)"
               >
-                {{ s.title }}
+                <span class="truncate">{{ s.title }}</span>
+                <el-tag
+                  v-if="sessionIsStale(s)"
+                  size="small"
+                  type="warning"
+                  effect="light"
+                  round
+                  class="!ml-auto shrink-0 !border-amber-200 !bg-amber-50 !text-[10px] !text-amber-800"
+                >
+                  {{ staleBadge }}
+                </el-tag>
               </button>
               <button
                 type="button"
