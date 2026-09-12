@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Top, VideoPause } from '@element-plus/icons-vue'
 
+import DemoWarehouseComposerHint from '../common/DemoWarehouseComposerHint.vue'
+
 const props = defineProps<{
   modelValue: string
   streaming: boolean
@@ -46,7 +48,10 @@ function onKeydown(e: KeyboardEvent) {
       @keydown="onKeydown"
     />
     <div class="mt-1 flex items-center justify-between gap-3 px-1">
-      <p class="text-xs text-[var(--color-muted-foreground)]">Enter 发送 · Shift+Enter 换行</p>
+      <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--color-muted-foreground)]">
+        <DemoWarehouseComposerHint />
+        <p>Enter 发送 · Shift+Enter 换行</p>
+      </div>
       <div class="flex items-center gap-2">
         <button
           v-if="streaming"

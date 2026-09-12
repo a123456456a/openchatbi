@@ -3,6 +3,7 @@ import { type KeyboardEvent, useEffect, useEffectEvent, useRef, useState } from 
 
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import DemoWarehouseComposerHint from '@/components/common/DemoWarehouseComposerHint'
 import ModelPicker from './ModelPicker'
 
 /** Enter multiline when probe exceeds one line by this much. */
@@ -174,16 +175,17 @@ export default function ChatComposer({
   )
 
   return (
-    <div
-      ref={composerRef}
-      className={cn(
-        'relative border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-card)] transition-[border-radius] duration-200',
-        multiline
-          ? 'flex flex-col gap-2 rounded-2xl px-3 pb-2.5 pt-3'
-          : 'flex items-center gap-1.5 rounded-full p-1.5 pl-2',
-        className,
-      )}
-    >
+    <div className={cn('w-full', className)}>
+      <DemoWarehouseComposerHint className="mb-1.5 px-1 text-left" />
+      <div
+        ref={composerRef}
+        className={cn(
+          'relative border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-card)] transition-[border-radius] duration-200',
+          multiline
+            ? 'flex flex-col gap-2 rounded-2xl px-3 pb-2.5 pt-3'
+            : 'flex items-center gap-1.5 rounded-full p-1.5 pl-2',
+        )}
+      >
       {/* Off-screen probe: measures wrap at single-row width so layout flips stay stable. */}
       <textarea
         ref={probeRef}
@@ -225,6 +227,7 @@ export default function ChatComposer({
           {actionButton}
         </>
       )}
+      </div>
     </div>
   )
 }
