@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/api/llmSettings', () => ({
@@ -28,7 +28,9 @@ describe('SettingsDialog', () => {
   })
 
   afterEach(() => {
+    cleanup()
     useSettingsStore.setState({ settingsOpen: false })
+    useAuthStore.setState({ role: 'admin', isAuthenticated: true })
   })
 
   it('shows the previously saved model and base_url instead of provider defaults on open', async () => {
@@ -66,7 +68,7 @@ describe('SettingsDialog', () => {
     useAuthStore.setState({ role: 'viewer', isAuthenticated: true })
     render(<SettingsDialog />)
     useSettingsStore.getState().openSettings()
-    expect(await screen.findByText(VIEWER_READONLY_DETAIL)).toBeVisible()
+    expect((await screen.findAllByText(VIEWER_READONLY_DETAIL))[0]).toBeVisible()
     expect(screen.queryByLabelText('API Key')).toBeNull()
     expect(screen.queryByRole('button', { name: /保存并使用/ })).toBeNull()
   })
