@@ -315,7 +315,7 @@ async def cancel_chat_run(
     rather than resuming a half-finished / interrupted graph.
     """
     user_id = current_user.id
-    require_active_warehouse_or_demo(db)
+    # Cancel clears checkpoint state only; warehouse gate is for chat/Text2SQL.
     run_config = build_run_config(user_id=user_id, session_id=session_id)
     thread_id = (run_config.get("configurable") or {}).get("thread_id") or f"{user_id}-{session_id}"
 
@@ -348,7 +348,7 @@ async def abort_chat_interrupt(
 ) -> AbortInterruptResponse:
     """Drop a paused LangGraph thread so the next message starts a fresh turn."""
     user_id = current_user.id
-    require_active_warehouse_or_demo(db)
+    # Aborting a paused interrupt only clears checkpoint state; no warehouse required.
     run_config = build_run_config(user_id=user_id, session_id=session_id)
     thread_id = (run_config.get("configurable") or {}).get("thread_id") or f"{user_id}-{session_id}"
     run_config.setdefault("configurable", {})["thread_id"] = thread_id

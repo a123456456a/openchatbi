@@ -206,3 +206,177 @@ def test_stream_after_cancel_starts_fresh_message_not_resume(client):
     assert len(seen_inputs) == 1
     assert not isinstance(seen_inputs[0], Command)
     assert seen_inputs[0] == {"messages": [("user", "新问题")]}
+
+def test_cancel_works_without_activated_warehouse(client, monkeypatch):
+    """Stopping a run must not depend on warehouse activation / demo exemption."""
+    from tests.backend.test_chat_user_llm import _bootstrap_admin
+
+    monkeypatch.setenv("ALLOW_DEMO_WAREHOUSE", "false")
+    monkeypatch.setenv("APP_ENV", "production")
+    get_settings.cache_clear()
+
+    tok = _bootstrap_admin(client)
+    checkpointer = AsyncMock()
+
+    with (
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+        patch("backend.chat.routes.request_cancel", new=AsyncMock(return_value=True)),
+    ):
+        r = client.post(
+            "/api/chat/sessions/s1/cancel",
+            headers=_auth(tok["access_token"]),
+        )
+
+    assert r.status_code == 200
+    assert r.json()["cancelled"] is True
+    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    get_settings.cache_clear()
+
+
+def test_mid_stream_cancel_emits_cancelled_and_clears_thread(client):
+    """When cancel flips during astream, NDJSON ends with cancelled and thread is cleared."""
+    from tests.backend.test_chat_user_llm import _bootstrap_admin, _put_deepseek
+
+    tok = _bootstrap_admin(client)
+    _put_deepseek(client, tok["access_token"])
+
+    cancel_event = asyncio.Event()
+    cancel_event.set()
+
+    async def fake_astream(*_args, **_kwargs):
+        yield ((), "updates", {"llm_node": {"messages": []}})
+        if False:
+            yield None
+
+    checkpointer = AsyncMock()
+    state_cleared = MagicMock()
+    state_cleared.interrupts = []
+    mock_graph = MagicMock()
+    mock_graph.astream = fake_astream
+    mock_graph.aget_state = AsyncMock(return_value=state_cleared)
+    mock_graph.checkpointer = checkpointer
+
+    with (
+        patch("backend.chat.routes.build_chat_model", return_value=MagicMock()),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock(return_value=mock_graph)),
+        patch("backend.chat.routes.AgentStreamProcessor") as proc_cls,
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+        patch("backend.chat.routes.register_run", new=AsyncMock(return_value=cancel_event)),
+        patch("backend.chat.routes.unregister_run", new=AsyncMock()),
+        patch("backend.chat.routes.is_cancel_requested", new=AsyncMock(return_value=True)),
+        patch("backend.chat.routes.clear_cancel", new=AsyncMock()) as clear_cancel,
+    ):
+        proc = MagicMock()
+        proc.process.return_value = []
+        proc.emit_turn_usage.return_value = None
+        proc.final_response = ""
+        proc_cls.return_value = proc
+
+        r = client.post(
+            "/api/chat/stream",
+            headers=_auth(tok["access_token"]),
+            json={"input": "hi", "session_id": "s1", "mode": "events"},
+        )
+
+    assert r.status_code == 200
+    lines = [ln for ln in r.text.splitlines() if ln.strip()]
+    assert any('"type": "cancelled"' in ln or '"type":"cancelled"' in ln for ln in lines)
+    checkpointer.adelete_thread.assert_awaited_with("u-s1")
+    clear_cancel.assert_awaited()
+
+
+def test_cancel_while_interrupt_pending_next_stream_is_fresh(client):
+    """Cancel must clear a paused interrupt thread so the next stream is not resume."""
+    from langgraph.types import Command
+
+    from tests.backend.test_chat_user_llm import _bootstrap_admin, _put_deepseek
+
+    tok = _bootstrap_admin(client)
+    _put_deepseek(client, tok["access_token"])
+
+    checkpointer = AsyncMock()
+    with (
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+        patch("backend.chat.routes.request_cancel", new=AsyncMock(return_value=False)),
+    ):
+        cancelled = client.post(
+            "/api/chat/sessions/s1/cancel",
+            headers=_auth(tok["access_token"]),
+        )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["thread_cleared"] is True
+    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+
+    seen_inputs = []
+
+    async def fake_astream(stream_input, *_args, **_kwargs):
+        seen_inputs.append(stream_input)
+        if False:
+            yield None
+        return
+
+    state_cleared = MagicMock()
+    state_cleared.interrupts = []
+    mock_graph = MagicMock()
+    mock_graph.astream = fake_astream
+    mock_graph.aget_state = AsyncMock(return_value=state_cleared)
+    mock_graph.checkpointer = AsyncMock()
+
+    with (
+        patch("backend.chat.routes.build_chat_model", return_value=MagicMock()),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock(return_value=mock_graph)),
+        patch("backend.chat.routes.AgentStreamProcessor") as proc_cls,
+        patch("backend.chat.routes.extract_final_answer", return_value="ok"),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+        patch("backend.chat.routes.register_run", new=AsyncMock(return_value=asyncio.Event())),
+        patch("backend.chat.routes.unregister_run", new=AsyncMock()),
+        patch("backend.chat.routes.is_cancel_requested", new=AsyncMock(return_value=False)),
+        patch("backend.chat.routes.clear_cancel", new=AsyncMock()),
+    ):
+        proc = MagicMock()
+        proc.process.return_value = []
+        proc.emit_turn_usage.return_value = None
+        proc.final_response = "ok"
+        proc_cls.return_value = proc
+
+        r = client.post(
+            "/api/chat/stream",
+            headers=_auth(tok["access_token"]),
+            json={"input": "new question", "session_id": "s1", "mode": "events"},
+        )
+
+    assert r.status_code == 200
+    assert len(seen_inputs) == 1
+    assert not isinstance(seen_inputs[0], Command)
+    assert seen_inputs[0] == {"messages": [("user", "new question")]}
+
+
+def test_abort_interrupt_works_without_activated_warehouse(client, monkeypatch):
+    from tests.backend.test_chat_user_llm import _bootstrap_admin
+
+    monkeypatch.setenv("ALLOW_DEMO_WAREHOUSE", "false")
+    monkeypatch.setenv("APP_ENV", "production")
+    get_settings.cache_clear()
+
+    tok = _bootstrap_admin(client)
+    saved = MagicMock()
+    saved.pending_writes = [("task-1", "__interrupt__", [{"text": "Approve?"}])]
+    checkpointer = AsyncMock()
+    checkpointer.aget_tuple = AsyncMock(return_value=saved)
+
+    with (
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+    ):
+        r = client.post(
+            "/api/chat/sessions/s1/abort-interrupt",
+            headers=_auth(tok["access_token"]),
+        )
+
+    assert r.status_code == 200
+    assert r.json() == {"aborted": True, "had_interrupt": True}
+    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    get_settings.cache_clear()
+
