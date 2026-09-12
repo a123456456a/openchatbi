@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, User } from '@element-plus/icons-vue'
 
 import AppShell from '../../components/layout/AppShell.vue'
@@ -85,6 +85,19 @@ async function onDelete(row: UserOut) {
   const reason = deleteDisabledReason(row)
   if (reason) {
     ElMessage.warning(reason)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认永久删除用户「${row.username}」？此操作不可恢复。`,
+      '删除用户',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  } catch {
     return
   }
   try {

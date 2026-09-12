@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import AppShell from '@/components/layout/AppShell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import CreateUserDialog from './CreateUserDialog'
@@ -18,6 +19,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<UserOut | null>(null)
 
   function isSelf(row: UserOut) {
     return !!currentUserId && row.id === currentUserId
@@ -70,18 +72,27 @@ export default function UsersPage() {
     }
   }
 
-  async function onDelete(row: UserOut) {
+  function requestDelete(row: UserOut) {
     const reason = deleteDisabledReason(row)
     if (reason) {
       setError(reason)
       return
     }
     setError(null)
+    setPendingDelete(row)
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return
+    const row = pendingDelete
+    setError(null)
     try {
       await deleteUser(row.id)
+      setPendingDelete(null)
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : '删除失败')
+      setPendingDelete(null)
     }
   }
 
@@ -170,7 +181,7 @@ export default function UsersPage() {
                           className="text-[var(--color-destructive)]"
                           disabled={!!deleteDisabledReason(row)}
                           title={deleteDisabledReason(row)}
-                          onClick={() => void onDelete(row)}
+                          onClick={() => requestDelete(row)}
                         >
                           删除
                         </Button>
@@ -184,6 +195,27 @@ export default function UsersPage() {
         </div>
 
         <CreateUserDialog open={dialogOpen} onOpenChange={setDialogOpen} onSaved={refresh} />
+
+        <Dialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>删除用户</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-slate-600">
+              {pendingDelete
+                ? `确认永久删除用户「${pendingDelete.username}」？此操作不可恢复。`
+                : null}
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPendingDelete(null)}>
+                取消
+              </Button>
+              <Button variant="destructive" onClick={() => void confirmDelete()}>
+                删除
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppShell>
   )
