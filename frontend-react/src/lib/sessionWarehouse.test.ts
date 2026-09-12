@@ -1,0 +1,30 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  STALE_WAREHOUSE_NEW_CHAT_LABEL,
+  STALE_WAREHOUSE_SESSION_MESSAGE,
+  evaluateSessionWarehouse,
+} from './sessionWarehouse'
+
+describe('evaluateSessionWarehouse', () => {
+  it('binds on first observation when session has no warehouse stamp', () => {
+    expect(evaluateSessionWarehouse(undefined, 'wh-1')).toBe('bind')
+    expect(evaluateSessionWarehouse(undefined, null)).toBe('bind')
+  })
+
+  it('is ok when bound id matches current active_connection_id', () => {
+    expect(evaluateSessionWarehouse('wh-1', 'wh-1')).toBe('ok')
+    expect(evaluateSessionWarehouse(null, null)).toBe('ok')
+  })
+
+  it('is stale when active warehouse identity changed', () => {
+    expect(evaluateSessionWarehouse('wh-1', 'wh-2')).toBe('stale')
+    expect(evaluateSessionWarehouse('wh-1', null)).toBe('stale')
+    expect(evaluateSessionWarehouse(null, 'wh-1')).toBe('stale')
+  })
+
+  it('exposes Chinese copy and CTA label', () => {
+    expect(STALE_WAREHOUSE_SESSION_MESSAGE).toBe('数仓已切换，请新开对话')
+    expect(STALE_WAREHOUSE_NEW_CHAT_LABEL).toBe('新开对话')
+  })
+})

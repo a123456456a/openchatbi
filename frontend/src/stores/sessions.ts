@@ -8,6 +8,12 @@ export type SessionMeta = {
   title: string
   updatedAt: number
   archived?: boolean
+  /**
+   * `active_connection_id` from `/api/warehouse/status` when this session was
+   * bound. `null` = demo / no active warehouse. `undefined` = not yet observed
+   * (legacy sessions); first status check binds silently.
+   */
+  warehouseConnectionId?: string | null
 }
 
 /** Base prefixes; actual localStorage keys are scoped as `${prefix}:${userId}`. */
@@ -156,6 +162,27 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  /** Stamp the warehouse identity this session was started / observed under. */
+  function setWarehouseConnectionId(id: string, warehouseConnectionId: string | null) {
+    const userId = activeUserId.value
+    if (!userId) return
+    const idx = sessions.value.findIndex((s) => s.id === id)
+    if (idx < 0) {
+      sessions.value = [
+        { id, title: '新会话', updatedAt: Date.now(), warehouseConnectionId },
+        ...sessions.value,
+      ]
+      saveSessions(userId, sessions.value)
+      return
+    }
+    const existing = sessions.value[idx]
+    if (existing.warehouseConnectionId === warehouseConnectionId) return
+    sessions.value = sessions.value.map((s) =>
+      s.id === id ? { ...s, warehouseConnectionId } : s,
+    )
+    saveSessions(userId, sessions.value)
+  }
+
   return {
     activeUserId,
     sessions,
@@ -168,5 +195,6 @@ export const useSessionsStore = defineStore('sessions', () => {
     archive,
     unarchive,
     remove,
+    setWarehouseConnectionId,
   }
 })
