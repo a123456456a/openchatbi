@@ -1,9 +1,17 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router'
 
 import { useAuthStore } from '@/stores/auth'
 
 type Status = 'checking' | 'ok' | 'fail'
+
+function RouteFallback() {
+  return (
+    <div className="flex h-full min-h-[40vh] items-center justify-center text-sm text-[var(--color-muted-foreground)]">
+      加载中…
+    </div>
+  )
+}
 
 export default function RequireAuth({ roles }: { roles?: string[] }) {
   const location = useLocation()
@@ -43,5 +51,9 @@ export default function RequireAuth({ roles }: { roles?: string[] }) {
     return <Navigate to="/chat" replace />
   }
 
-  return <Outlet />
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <Outlet />
+    </Suspense>
+  )
 }

@@ -1,10 +1,13 @@
+import { lazy } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router'
 
-import DatabasesPage from '@/pages/admin/DatabasesPage'
-import UsersPage from '@/pages/admin/UsersPage'
-import ChatPage from '@/pages/ChatPage'
 import LoginPage from '@/pages/LoginPage'
 import RequireAuth from './RequireAuth'
+
+// Heavy chat / admin pages stay out of the login entry chunk.
+const ChatPage = lazy(() => import('@/pages/ChatPage'))
+const UsersPage = lazy(() => import('@/pages/admin/UsersPage'))
+const DatabasesPage = lazy(() => import('@/pages/admin/DatabasesPage'))
 
 export const router = createBrowserRouter([
   {

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChatMessage, ChatStep } from '@/types/stream'
@@ -28,7 +28,7 @@ describe('MessageList tool body', () => {
     cleanup()
   })
 
-  it('shows only the final answer body: no thinking, no process/tool-call panels', () => {
+  it('shows only the final answer body: no thinking, no process/tool-call panels', async () => {
     const messages: ChatMessage[] = [
       {
         id: 'a1',
@@ -50,8 +50,8 @@ describe('MessageList tool body', () => {
 
     render(<MessageList messages={messages} />)
 
-    // Final answer body is shown.
-    expect(screen.getByText('订单总数是 1234')).toBeVisible()
+    // Final answer body is shown (markdown module loads async).
+    expect(await screen.findByText('订单总数是 1234')).toBeVisible()
 
     // Thinking and intermediate process steps (SQL, tool-call invocations) are not rendered.
     expect(screen.queryByText('先查一下')).not.toBeInTheDocument()
@@ -66,10 +66,12 @@ describe('MessageList tool body', () => {
     expect(toolButton).toHaveAttribute('aria-expanded', 'false')
 
     fireEvent.click(toolButton)
-    expect(document.querySelector('pre code')?.textContent).toBe("[{'total': 1234}]\n")
+    await waitFor(() => {
+      expect(document.querySelector('pre code')?.textContent).toBe("[{'total': 1234}]\n")
+    })
   })
 
-  it('formats a JSON-shaped tool result as a fenced, pretty-printed code block instead of raw prose', () => {
+  it('formats a JSON-shaped tool result as a fenced, pretty-printed code block instead of raw prose', async () => {
     const payload = { candidates: [{ table: 'orders', match_reason: 'orders matches 1 relevant column(s)' }] }
     const messages: ChatMessage[] = [
       {
@@ -90,6 +92,8 @@ describe('MessageList tool body', () => {
 
     render(<MessageList messages={messages} />)
 
+    expect(await screen.findByText('已找到相关表')).toBeVisible()
+
     // The raw single-line JSON string is never shown verbatim on the page.
     expect(screen.queryByText(JSON.stringify(payload))).not.toBeInTheDocument()
     expect(document.querySelector('pre code')).toBeNull()
@@ -97,13 +101,15 @@ describe('MessageList tool body', () => {
     fireEvent.click(screen.getByRole('button', { name: /search_schema/ }))
 
     // Once expanded, it renders as a pretty-printed code block (not mangled markdown prose).
-    const codeBlock = document.querySelector('pre code')
-    expect(codeBlock).not.toBeNull()
-    expect(codeBlock?.textContent).toContain('"match_reason"')
-    expect(codeBlock?.textContent).toContain('"orders"')
+    await waitFor(() => {
+      const codeBlock = document.querySelector('pre code')
+      expect(codeBlock).not.toBeNull()
+      expect(codeBlock?.textContent).toContain('"match_reason"')
+      expect(codeBlock?.textContent).toContain('"orders"')
+    })
   })
 
-  it('renders a visualization step as an inline chart, not inside the collapsed process panel', () => {
+  it('renders a visualization step as an inline chart, not inside the collapsed process panel', async () => {
     const messages: ChatMessage[] = [
       {
         id: 'a2',
@@ -126,7 +132,7 @@ describe('MessageList tool body', () => {
 
     render(<MessageList messages={messages} />)
 
-    expect(screen.getByText('这是按地区的销售额')).toBeVisible()
+    expect(await screen.findByText('这是按地区的销售额')).toBeVisible()
     expect(screen.getByText('销售额')).toBeVisible()
     // The chart is inline in the body, not tucked away inside a "过程" collapse trigger.
     expect(screen.queryByRole('button', { name: /Generated visualization/ })).not.toBeInTheDocument()
