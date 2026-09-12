@@ -127,21 +127,32 @@ def _json_safe(obj: Any) -> Any:
 _INTERRUPT_WRITE_KEY = "__interrupt__"
 
 
+def _session_checkpoint_thread_ids(thread_id: str) -> list[str]:
+    """Parent chat thread plus the data-analysis subgraph child thread id."""
+    return [thread_id, f"{thread_id}:data_analysis"]
+
+
+async def _adelete_session_threads(checkpointer: Any, thread_id: str) -> None:
+    """Delete parent and `:data_analysis` child checkpoint threads (idempotent)."""
+    for tid in _session_checkpoint_thread_ids(thread_id):
+        await checkpointer.adelete_thread(tid)
+
+
 async def _clear_thread_state(graph: Any, thread_id: str) -> bool:
-    """Delete checkpoint thread so the next message cannot resume a half-finished turn."""
+    """Delete checkpoint threads so the next message cannot resume a half-finished turn."""
     checkpointer = getattr(graph, "checkpointer", None)
     if checkpointer is None:
         return False
-    await checkpointer.adelete_thread(thread_id)
+    await _adelete_session_threads(checkpointer, thread_id)
     return True
 
 
 async def _clear_thread_by_id(thread_id: str) -> bool:
-    """Delete a checkpoint thread via the shared checkpointer (no agent graph / LLM)."""
+    """Delete session checkpoint threads via the shared checkpointer (no agent graph / LLM)."""
     checkpointer = await get_async_checkpointer()
     if checkpointer is None:
         return False
-    await checkpointer.adelete_thread(thread_id)
+    await _adelete_session_threads(checkpointer, thread_id)
     return True
 
 
@@ -186,7 +197,7 @@ async def _abort_interrupt_via_checkpointer(run_config: dict[str, Any], thread_i
     saved = await checkpointer.aget_tuple(run_config)
     if not _checkpoint_has_interrupt(saved):
         return AbortInterruptResponse(aborted=False, had_interrupt=False)
-    await checkpointer.adelete_thread(thread_id)
+    await _adelete_session_threads(checkpointer, thread_id)
     return AbortInterruptResponse(aborted=True, had_interrupt=True)
 
 
@@ -367,7 +378,7 @@ async def abort_chat_interrupt(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Agent graph has no checkpointer; cannot abort interrupt",
         )
-    await checkpointer.adelete_thread(thread_id)
+    await _adelete_session_threads(checkpointer, thread_id)
     return AbortInterruptResponse(aborted=True, had_interrupt=True)
 
 

@@ -103,7 +103,10 @@ def test_cancel_endpoint_clears_thread_and_signals_run(client):
     assert body["cancelled"] is True
     assert body["had_running_run"] is True
     assert body["thread_cleared"] is True
-    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+        "u-s1",
+        "u-s1:data_analysis",
+    ]
     req_cancel.assert_awaited_once_with("u-s1")
     build_graph.assert_not_called()
     resolve_llm.assert_not_called()
@@ -134,7 +137,10 @@ def test_cancel_without_llm_settings_succeeds(client):
     assert body["had_running_run"] is False
     assert body["thread_cleared"] is True
     assert "设置" not in str(body)
-    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+        "u-s1",
+        "u-s1:data_analysis",
+    ]
     build_graph.assert_not_called()
     resolve_llm.assert_not_called()
 
@@ -230,7 +236,10 @@ def test_cancel_works_without_activated_warehouse(client, monkeypatch):
 
     assert r.status_code == 200
     assert r.json()["cancelled"] is True
-    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+        "u-s1",
+        "u-s1:data_analysis",
+    ]
     get_settings.cache_clear()
 
 
@@ -282,7 +291,10 @@ def test_mid_stream_cancel_emits_cancelled_and_clears_thread(client):
     assert r.status_code == 200
     lines = [ln for ln in r.text.splitlines() if ln.strip()]
     assert any('"type": "cancelled"' in ln or '"type":"cancelled"' in ln for ln in lines)
-    checkpointer.adelete_thread.assert_awaited_with("u-s1")
+    assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+        "u-s1",
+        "u-s1:data_analysis",
+    ]
     clear_cancel.assert_awaited()
 
 
@@ -307,7 +319,10 @@ def test_cancel_while_interrupt_pending_next_stream_is_fresh(client):
         )
     assert cancelled.status_code == 200
     assert cancelled.json()["thread_cleared"] is True
-    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+        "u-s1",
+        "u-s1:data_analysis",
+    ]
 
     seen_inputs = []
 
@@ -377,6 +392,94 @@ def test_abort_interrupt_works_without_activated_warehouse(client, monkeypatch):
 
     assert r.status_code == 200
     assert r.json() == {"aborted": True, "had_interrupt": True}
-    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+        "u-s1",
+        "u-s1:data_analysis",
+    ]
     get_settings.cache_clear()
+
+
+def test_session_checkpoint_thread_ids_includes_data_analysis_child():
+    from backend.chat.routes import _session_checkpoint_thread_ids
+
+    assert _session_checkpoint_thread_ids("u-s1") == ["u-s1", "u-s1:data_analysis"]
+
+
+def test_cancel_clears_parent_and_data_analysis_child_threads(client):
+    from tests.backend.test_chat_user_llm import _bootstrap_admin
+
+    tok = _bootstrap_admin(client)
+    checkpointer = AsyncMock()
+
+    with (
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+        patch("backend.chat.routes.request_cancel", new=AsyncMock(return_value=True)),
+    ):
+        r = client.post(
+            "/api/chat/sessions/s1/cancel",
+            headers=_auth(tok["access_token"]),
+        )
+
+    assert r.status_code == 200
+    assert r.json()["thread_cleared"] is True
+    assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+        "u-s1",
+        "u-s1:data_analysis",
+    ]
+
+
+def test_abort_clears_parent_and_data_analysis_child_threads(client):
+    from tests.backend.test_chat_user_llm import _bootstrap_admin
+
+    tok = _bootstrap_admin(client)
+    saved = MagicMock()
+    saved.pending_writes = [("task-1", "__interrupt__", [{"text": "Approve?"}])]
+    checkpointer = AsyncMock()
+    checkpointer.aget_tuple = AsyncMock(return_value=saved)
+
+    with (
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+    ):
+        r = client.post(
+            "/api/chat/sessions/s1/abort-interrupt",
+            headers=_auth(tok["access_token"]),
+        )
+
+    assert r.status_code == 200
+    assert r.json() == {"aborted": True, "had_interrupt": True}
+    assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+        "u-s1",
+        "u-s1:data_analysis",
+    ]
+
+
+def test_repeated_cancel_is_idempotent(client):
+    from tests.backend.test_chat_user_llm import _bootstrap_admin
+
+    tok = _bootstrap_admin(client)
+    checkpointer = AsyncMock()
+
+    with (
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+        patch("backend.chat.routes.request_cancel", new=AsyncMock(side_effect=[True, False])),
+    ):
+        first = client.post(
+            "/api/chat/sessions/s1/cancel",
+            headers=_auth(tok["access_token"]),
+        )
+        second = client.post(
+            "/api/chat/sessions/s1/cancel",
+            headers=_auth(tok["access_token"]),
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["cancelled"] is True
+    assert second.json()["cancelled"] is True
+    assert first.json()["thread_cleared"] is True
+    assert second.json()["thread_cleared"] is True
+    assert checkpointer.adelete_thread.await_count == 4
 
