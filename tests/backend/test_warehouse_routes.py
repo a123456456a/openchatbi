@@ -379,7 +379,7 @@ def test_activate_success_clears_checkpoint_threads(client):
     assert r.status_code == 200
     apply_status = r.json()["runtime_apply"]
     assert apply_status["catalog_sync_status"] == "success"
-    assert apply_status["message"] == "已切换数仓，进行中的对话上下文已重置"
+    assert apply_status["message"] == "数仓已激活，catalog 已同步并重建索引；进行中的对话上下文已重置"
     clear_mock.assert_called_once_with()
 
 
