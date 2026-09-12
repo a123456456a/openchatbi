@@ -36,6 +36,7 @@ export default function ChatWelcome({
   onSend,
   onStop,
   sendDisabled = false,
+  readOnly = false,
 }: {
   value: string
   onChange: (value: string) => void
@@ -43,6 +44,7 @@ export default function ChatWelcome({
   onSend: () => void
   onStop: () => void
   sendDisabled?: boolean
+  readOnly?: boolean
 }) {
   return (
     <div className="chat-canvas-bg flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
@@ -70,16 +72,18 @@ export default function ChatWelcome({
             onSend={onSend}
             onStop={onStop}
             sendDisabled={sendDisabled}
-            autoFocus
+            readOnly={readOnly}
+            autoFocus={!readOnly}
           />
         </div>
 
+        {!readOnly && (
         <div className="mt-6 grid grid-cols-1 gap-2.5 text-left sm:grid-cols-2">
           {QUICK_PROMPTS.map(({ icon: Icon, label, description, prompt }) => (
             <button
               key={label}
               type="button"
-              disabled={sendDisabled}
+              disabled={sendDisabled || readOnly}
               onClick={() => onChange(prompt)}
               className="group flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)]/80 px-4 py-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary)]/40 hover:shadow-[var(--shadow-float)] disabled:pointer-events-none disabled:opacity-50"
             >
@@ -93,6 +97,7 @@ export default function ChatWelcome({
             </button>
           ))}
         </div>
+        )}
       </div>
     </div>
   )

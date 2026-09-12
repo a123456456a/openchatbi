@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import { canManageLlm } from '@/lib/roles'
 
 export default function SidebarFooter() {
   const navigate = useNavigate()
@@ -56,15 +57,21 @@ export default function SidebarFooter() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-10 w-10 rounded-full"
-        aria-label="设置"
-        onClick={openSettings}
-      >
-        <Settings size={18} />
-      </Button>
+      {canManageLlm(role) ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 rounded-full"
+          aria-label="设置"
+          onClick={openSettings}
+        >
+          <Settings size={18} />
+        </Button>
+      ) : (
+        <span className="px-2 text-xs text-[var(--color-muted-foreground)]" title="只读账号">
+          只读
+        </span>
+      )}
     </div>
   )
 }

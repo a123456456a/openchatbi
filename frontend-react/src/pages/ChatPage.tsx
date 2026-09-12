@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
+import { canAskData, canManageLlm } from '@/lib/roles'
 
 /** Must match `MISSING_LLM_SETTINGS_DETAIL` in `backend/chat/routes.py`. */
 const MISSING_LLM_SETTINGS_DETAIL = '请先在设置中配置模型'
@@ -30,7 +31,7 @@ function ChatErrorBanner() {
     <div className="px-6 pb-2">
       <Alert variant="destructive">
         <AlertDescription>{error}</AlertDescription>
-        {error === MISSING_LLM_SETTINGS_DETAIL && (
+        {error === MISSING_LLM_SETTINGS_DETAIL && canManageLlm(role) && (
           <AlertAction>
             <Button size="sm" variant="outline" onClick={openSettings}>
               去设置
@@ -81,6 +82,8 @@ function ActiveChatComposer({
   const streaming = useChatStore((s) => s.streaming)
   const send = useChatStore((s) => s.send)
   const stop = useChatStore((s) => s.stop)
+  const role = useAuthStore((s) => s.role)
+  const readOnly = !canAskData(role)
   const [input, setInput] = useState('')
 
   useEffect(() => {
@@ -88,7 +91,7 @@ function ActiveChatComposer({
   }, [sessionId])
 
   function onSend() {
-    if (sendDisabled || !input.trim()) return
+    if (readOnly || sendDisabled || !input.trim()) return
     const text = input
     setInput('')
     void send(sessionId, text)
@@ -103,7 +106,7 @@ function ActiveChatComposer({
   return (
     <div className="border-t border-[var(--color-border)] bg-[var(--color-card)] p-4">
       <div className="mx-auto max-w-3xl">
-        <InterruptPrompt />
+        {!readOnly && <InterruptPrompt />}
         <ChatComposer
           value={input}
           onChange={setInput}
@@ -112,6 +115,7 @@ function ActiveChatComposer({
           onStop={stop}
           onNewChat={newChat}
           sendDisabled={sendDisabled}
+          readOnly={readOnly}
         />
       </div>
     </div>
@@ -132,6 +136,7 @@ function WelcomePane({
   const error = useChatStore((s) => s.error)
   const openSettings = useSettingsStore((s) => s.openSettings)
   const role = useAuthStore((s) => s.role)
+  const readOnly = !canAskData(role)
   const [input, setInput] = useState('')
 
   useEffect(() => {
@@ -139,7 +144,7 @@ function WelcomePane({
   }, [sessionId])
 
   function onSend() {
-    if (sendDisabled || !input.trim()) return
+    if (readOnly || sendDisabled || !input.trim()) return
     const text = input
     setInput('')
     void send(sessionId, text)
@@ -154,12 +159,13 @@ function WelcomePane({
         onSend={onSend}
         onStop={stop}
         sendDisabled={sendDisabled}
+        readOnly={readOnly}
       />
       {error && (
         <div className="px-6 pb-6">
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
-            {error === MISSING_LLM_SETTINGS_DETAIL && (
+            {error === MISSING_LLM_SETTINGS_DETAIL && canManageLlm(role) && (
               <AlertAction>
                 <Button size="sm" variant="outline" onClick={openSettings}>
                   去设置

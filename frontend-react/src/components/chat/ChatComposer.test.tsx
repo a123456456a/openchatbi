@@ -55,4 +55,21 @@ describe('ChatComposer', () => {
     fireEvent.click(getByRole('button', { name: '新建会话' }))
     expect(onNewChat).toHaveBeenCalled()
   })
+
+
+  it('readOnly hides send chrome and shows a viewer notice', () => {
+    const onSend = vi.fn()
+    const { queryByRole, getByText } = render(
+      <ChatComposer
+        value="不该发出去"
+        onChange={() => {}}
+        streaming={false}
+        onSend={onSend}
+        onStop={() => {}}
+        readOnly
+      />,
+    )
+    expect(queryByRole('button', { name: '发送' })).toBeNull()
+    expect(getByText(/当前账号为只读/)).toBeVisible()
+  })
 })

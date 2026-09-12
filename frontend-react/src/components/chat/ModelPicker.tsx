@@ -9,12 +9,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useSettingsStore } from '@/stores/settings'
+import { useAuthStore } from '@/stores/auth'
+import { canManageLlm } from '@/lib/roles'
 
 /** Inline model switcher shown at the end of the composer, mirroring the model chip
  * in the reference screenshot — lets the user flip between already-configured
  * providers without opening the full Settings dialog. Providers without a saved
  * API key aren't selectable here; picking one still requires the Settings dialog. */
 export default function ModelPicker() {
+  const role = useAuthStore((s) => s.role)
   const activeProvider = useSettingsStore((s) => s.activeProvider)
   const configs = useSettingsStore((s) => s.configs)
   const catalog = useSettingsStore((s) => s.catalog)
@@ -32,6 +35,10 @@ export default function ModelPicker() {
   }, [])
 
   const usable = configs.filter((c) => c.has_key)
+
+  if (!canManageLlm(role)) {
+    return null
+  }
   const activeConfig = usable.find((c) => c.provider === activeProvider)
   const activeLabel = activeConfig
     ? (catalog.find((m) => m.id === activeConfig.provider)?.label ?? activeConfig.provider)
