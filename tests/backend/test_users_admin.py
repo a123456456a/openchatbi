@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app import app
-from backend.auth.models import Role, User
+from backend.auth.models import RefreshToken, Role, User, UserLlmConfig
 from backend.auth.passwords import hash_password
 from backend.config import get_settings
 from backend.db import Base, reset_engine
@@ -206,3 +206,129 @@ def test_report_download_rejects_path_traversal(client, tmp_path, monkeypatch):
         headers=_auth(owner_tok["access_token"]),
     )
     assert r.status_code in (400, 404)
+
+
+def test_admin_can_hard_delete_user(client):
+    client.post("/api/auth/bootstrap", json={"username": "admin", "password": "Admin123!"})
+    admin_tok = _password_token(client, "admin", "Admin123!")
+    headers = _auth(admin_tok["access_token"])
+
+    created = client.post(
+        "/api/users",
+        headers=headers,
+        json={"username": "doomed", "password": "Pass123!", "role": "analyst"},
+    ).json()
+
+    from datetime import datetime, timezone
+
+    sess = db.SessionLocal()
+    try:
+        sess.add(
+            RefreshToken(
+                user_id=created["id"],
+                token_hash="deadbeef" * 8,
+                expires_at=datetime.now(timezone.utc),
+            )
+        )
+        sess.add(
+            UserLlmConfig(
+                user_id=created["id"],
+                provider="openai",
+                api_key_encrypted="cipher",
+                model="gpt-4o",
+            )
+        )
+        sess.commit()
+    finally:
+        sess.close()
+
+    deleted = client.delete(f"/api/users/{created['id']}", headers=headers)
+    assert deleted.status_code == 204
+
+    listed = client.get("/api/users", headers=headers)
+    assert listed.status_code == 200
+    assert all(u["id"] != created["id"] for u in listed.json())
+
+    sess = db.SessionLocal()
+    try:
+        assert sess.get(User, created["id"]) is None
+        assert sess.query(RefreshToken).filter(RefreshToken.user_id == created["id"]).count() == 0
+        assert sess.query(UserLlmConfig).filter(UserLlmConfig.user_id == created["id"]).count() == 0
+    finally:
+        sess.close()
+
+
+def test_cannot_delete_yourself_when_other_admin_exists(client):
+    client.post("/api/auth/bootstrap", json={"username": "admin", "password": "Admin123!"})
+    admin_tok = _password_token(client, "admin", "Admin123!")
+    headers = _auth(admin_tok["access_token"])
+    client.post(
+        "/api/users",
+        headers=headers,
+        json={"username": "admin2", "password": "Admin123!", "role": "admin"},
+    )
+
+    r = client.delete(f"/api/users/{admin_tok['user_id']}", headers=headers)
+    assert r.status_code == 400
+    assert "yourself" in r.json()["detail"].lower()
+
+
+def test_cannot_delete_last_admin(client):
+    """Sole admin self-delete is rejected as last-admin (checked before self)."""
+    client.post("/api/auth/bootstrap", json={"username": "admin", "password": "Admin123!"})
+    admin_tok = _password_token(client, "admin", "Admin123!")
+    headers = _auth(admin_tok["access_token"])
+
+    r = client.delete(f"/api/users/{admin_tok['user_id']}", headers=headers)
+    assert r.status_code == 400
+    assert "last admin" in r.json()["detail"].lower()
+
+
+def test_admin_can_delete_other_admin_when_another_remains(client):
+    client.post("/api/auth/bootstrap", json={"username": "admin", "password": "Admin123!"})
+    admin_tok = _password_token(client, "admin", "Admin123!")
+    headers = _auth(admin_tok["access_token"])
+    other = client.post(
+        "/api/users",
+        headers=headers,
+        json={"username": "admin2", "password": "Admin123!", "role": "admin"},
+    ).json()
+
+    r = client.delete(f"/api/users/{other['id']}", headers=headers)
+    assert r.status_code == 204
+
+
+def test_non_admin_cannot_delete_user(client):
+    client.post("/api/auth/bootstrap", json={"username": "admin", "password": "Admin123!"})
+    admin_tok = _password_token(client, "admin", "Admin123!")
+    headers = _auth(admin_tok["access_token"])
+    created = client.post(
+        "/api/users",
+        headers=headers,
+        json={"username": "viewer1", "password": "Viewer123!", "role": "viewer"},
+    ).json()
+    # create a separate target so viewer is not deleting themselves only
+    target = client.post(
+        "/api/users",
+        headers=headers,
+        json={"username": "victim", "password": "Pass123!", "role": "viewer"},
+    ).json()
+    viewer_tok = _password_token(client, "viewer1", "Viewer123!")
+    r = client.delete(
+        f"/api/users/{target['id']}",
+        headers=_auth(viewer_tok["access_token"]),
+    )
+    assert r.status_code == 403
+    # target still exists
+    assert any(u["id"] == target["id"] for u in client.get("/api/users", headers=headers).json())
+    assert any(u["id"] == created["id"] for u in client.get("/api/users", headers=headers).json())
+
+
+def test_delete_missing_user_returns_404(client):
+    client.post("/api/auth/bootstrap", json={"username": "admin", "password": "Admin123!"})
+    admin_tok = _password_token(client, "admin", "Admin123!")
+    headers = _auth(admin_tok["access_token"])
+    r = client.delete("/api/users/00000000-0000-0000-0000-000000000000", headers=headers)
+    assert r.status_code == 404
+    assert "not found" in r.json()["detail"].lower()
+

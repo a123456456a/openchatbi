@@ -1,7 +1,8 @@
 import { Plus, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { listUsers, patchUser, type UserOut } from '@/api/users'
+import { deleteUser, listUsers, patchUser, type UserOut } from '@/api/users'
+import { useAuthStore } from '@/stores/auth'
 import AppShell from '@/components/layout/AppShell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,10 +13,26 @@ import CreateUserDialog from './CreateUserDialog'
 const ROLES = ['admin', 'analyst', 'viewer']
 
 export default function UsersPage() {
+  const currentUserId = useAuthStore((s) => s.userId)
   const [users, setUsers] = useState<UserOut[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+
+  function isSelf(row: UserOut) {
+    return !!currentUserId && row.id === currentUserId
+  }
+
+  function isLastAdmin(row: UserOut) {
+    if (row.role !== 'admin') return false
+    return users.filter((u) => u.role === 'admin').length <= 1
+  }
+
+  function deleteDisabledReason(row: UserOut): string | undefined {
+    if (isSelf(row)) return '不能删除当前登录账号'
+    if (isLastAdmin(row)) return '必须保留至少一名管理员'
+    return undefined
+  }
 
   async function refresh() {
     setLoading(true)
@@ -53,6 +70,21 @@ export default function UsersPage() {
     }
   }
 
+  async function onDelete(row: UserOut) {
+    const reason = deleteDisabledReason(row)
+    if (reason) {
+      setError(reason)
+      return
+    }
+    setError(null)
+    try {
+      await deleteUser(row.id)
+      await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '删除失败')
+    }
+  }
+
   return (
     <AppShell>
       <div className="flex-1 overflow-auto bg-[var(--color-background)] p-6">
@@ -70,7 +102,7 @@ export default function UsersPage() {
                   用户管理
                 </h1>
                 <p className="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
-                  管理账号角色与启用状态
+                  管理账号角色、启用状态与删除
                 </p>
               </div>
             </div>
@@ -131,6 +163,16 @@ export default function UsersPage() {
                       <TableCell className="text-right">
                         <Button variant="link" size="sm" onClick={() => void toggleActive(row)}>
                           {row.is_active ? '停用' : '启用'}
+                        </Button>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="text-[var(--color-destructive)]"
+                          disabled={!!deleteDisabledReason(row)}
+                          title={deleteDisabledReason(row)}
+                          onClick={() => void onDelete(row)}
+                        >
+                          删除
                         </Button>
                       </TableCell>
                     </TableRow>
