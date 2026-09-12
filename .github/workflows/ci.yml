@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  push:
+    branches: [ main, local-main ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, local-main ]
 
 permissions:
   contents: read
@@ -33,6 +35,33 @@ jobs:
       run: |
         uv run black --check .
 
-    - name: Run tests
+    - name: Run tests (incl. tests/backend) with openchatbi+backend coverage
       run: |
-        uv run pytest -v --cov=openchatbi --cov-report=xml
+        uv run pytest -v --cov=openchatbi --cov=backend --cov-report=xml
+
+  frontend-react:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-react
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 10
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'pnpm'
+        cache-dependency-path: frontend-react/pnpm-lock.yaml
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Run vitest
+      run: pnpm test
