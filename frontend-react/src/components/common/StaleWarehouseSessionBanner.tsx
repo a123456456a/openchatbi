@@ -18,7 +18,14 @@ import { useSessionsStore } from '@/stores/sessions'
  * warehouse identity with live `active_connection_id`. Prompt to start a new
  * chat when the warehouse was switched underneath a stale thread.
  */
-export default function StaleWarehouseSessionBanner({ sessionId }: { sessionId: string }) {
+export default function StaleWarehouseSessionBanner({
+  sessionId,
+  onStaleChange,
+}: {
+  sessionId: string
+  /** Notifies the chat page so the composer can block send while this banner is visible. */
+  onStaleChange?: (stale: boolean) => void
+}) {
   const navigate = useNavigate()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const sessions = useSessionsStore((s) => s.sessions)
@@ -29,12 +36,19 @@ export default function StaleWarehouseSessionBanner({ sessionId }: { sessionId: 
   const [stale, setStale] = useState(false)
   const [currentWarehouseId, setCurrentWarehouseId] = useState<string | null>(null)
   const checkSeq = useRef(0)
+  const onStaleChangeRef = useRef(onStaleChange)
+  onStaleChangeRef.current = onStaleChange
+
+  const publishStale = useCallback((next: boolean) => {
+    setStale(next)
+    onStaleChangeRef.current?.(next)
+  }, [])
 
   const boundWarehouseId = sessions.find((s) => s.id === sessionId)?.warehouseConnectionId
 
   const checkWarehouse = useCallback(() => {
     if (!isAuthenticated || !sessionId) {
-      setStale(false)
+      publishStale(false)
       return
     }
     const seq = ++checkSeq.current
@@ -48,25 +62,29 @@ export default function StaleWarehouseSessionBanner({ sessionId }: { sessionId: 
         const verdict = evaluateSessionWarehouse(bound, current)
         if (verdict === 'bind') {
           setWarehouseConnectionId(sessionId, current)
-          setStale(false)
+          publishStale(false)
           return
         }
         if (verdict === 'stale') {
           stop()
-          setStale(true)
+          publishStale(true)
           return
         }
-        setStale(false)
+        publishStale(false)
       })
       .catch(() => {
         // Soft-fail: do not block chat if status is temporarily unavailable.
-        if (seq === checkSeq.current) setStale(false)
+        if (seq === checkSeq.current) publishStale(false)
       })
-  }, [isAuthenticated, sessionId, setWarehouseConnectionId, stop])
+  }, [isAuthenticated, sessionId, setWarehouseConnectionId, stop, publishStale])
 
   useEffect(() => {
+    publishStale(false)
     checkWarehouse()
-  }, [checkWarehouse])
+    return () => {
+      publishStale(false)
+    }
+  }, [checkWarehouse, publishStale])
 
   useEffect(() => {
     function onFocus() {
@@ -87,15 +105,15 @@ export default function StaleWarehouseSessionBanner({ sessionId }: { sessionId: 
   useEffect(() => {
     if (boundWarehouseId === undefined) return
     if (evaluateSessionWarehouse(boundWarehouseId, currentWarehouseId) === 'ok') {
-      setStale(false)
+      publishStale(false)
     }
-  }, [boundWarehouseId, currentWarehouseId])
+  }, [boundWarehouseId, currentWarehouseId, publishStale])
 
   function startNewChat() {
     const id = crypto.randomUUID()
     ensure(id)
     setWarehouseConnectionId(id, currentWarehouseId)
-    setStale(false)
+    publishStale(false)
     navigate(`/chat/${id}`)
   }
 

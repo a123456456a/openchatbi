@@ -34,6 +34,7 @@ export default function ChatComposer({
   onSend,
   onStop,
   onNewChat,
+  sendDisabled = false,
   autoFocus,
   placeholder = '输入数据分析问题，例如：上周销售额按品类汇总…',
   className,
@@ -45,6 +46,8 @@ export default function ChatComposer({
   onStop: () => void
   /** Optional "+" affordance to jump straight into a fresh session. */
   onNewChat?: () => void
+  /** When true (e.g. stale warehouse banner visible), block send / Enter; new-chat stays available. */
+  sendDisabled?: boolean
   autoFocus?: boolean
   placeholder?: string
   className?: string
@@ -121,7 +124,7 @@ export default function ChatComposer({
   }, [])
 
   function handleSend() {
-    if (!value.trim() || streaming) return
+    if (!value.trim() || streaming || sendDisabled) return
     onSend()
   }
 
@@ -132,7 +135,7 @@ export default function ChatComposer({
     }
   }
 
-  const canSend = Boolean(value.trim()) && !streaming
+  const canSend = Boolean(value.trim()) && !streaming && !sendDisabled
 
   const newChatButton = onNewChat ? (
     <button
@@ -206,7 +209,7 @@ export default function ChatComposer({
         rows={1}
         autoFocus={autoFocus}
         placeholder={placeholder}
-        disabled={streaming}
+        disabled={streaming || sendDisabled}
         className={cn(
           'max-h-48 min-h-8 resize-none !border-none bg-transparent px-1.5 py-1.5 text-[15px] leading-6 !shadow-none outline-none focus-visible:!border-none focus-visible:!outline-none focus-visible:!ring-0 dark:bg-transparent',
           multiline ? 'w-full' : 'flex-1',

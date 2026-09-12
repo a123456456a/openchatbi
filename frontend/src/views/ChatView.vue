@@ -26,6 +26,7 @@ const settings = useSettingsStore()
 const auth = useAuthStore()
 
 const input = ref('')
+const warehouseStale = ref(false)
 const sessionId = computed(() => {
   const p = route.params.sessionId
   return typeof p === 'string' && p ? p : ''
@@ -48,6 +49,7 @@ onMounted(() => {
 watch(
   () => route.params.sessionId,
   (id) => {
+    warehouseStale.value = false
     if (typeof id === 'string' && id) chat.loadSession(id)
   },
   { immediate: true },
@@ -55,10 +57,14 @@ watch(
 
 async function onSend() {
   const id = sessionId.value
-  if (!id || !input.value.trim()) return
+  if (warehouseStale.value || !id || !input.value.trim()) return
   const text = input.value
   input.value = ''
   await chat.send(id, text)
+}
+
+function onWarehouseStaleChange(stale: boolean) {
+  warehouseStale.value = stale
 }
 
 function goActivateWarehouse() {
@@ -69,7 +75,11 @@ function goActivateWarehouse() {
 <template>
   <AppShell>
     <div class="flex min-h-0 flex-1 flex-col bg-[var(--color-background)]">
-      <StaleWarehouseSessionBanner v-if="sessionId" :session-id="sessionId" />
+      <StaleWarehouseSessionBanner
+        v-if="sessionId"
+        :session-id="sessionId"
+        @stale-change="onWarehouseStaleChange"
+      />
       <header
         v-if="hasMessages"
         class="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-card)]/90 px-6 py-3 backdrop-blur-sm"
@@ -102,13 +112,25 @@ function goActivateWarehouse() {
         <div class="border-t border-[var(--color-border)] bg-[var(--color-card)] p-4">
           <div class="mx-auto max-w-3xl">
             <InterruptPrompt />
-            <ChatComposer v-model="input" :streaming="chat.streaming" @send="onSend" @stop="chat.stop()" />
+            <ChatComposer
+              v-model="input"
+              :streaming="chat.streaming"
+              :send-disabled="warehouseStale"
+              @send="onSend"
+              @stop="chat.stop()"
+            />
           </div>
         </div>
       </template>
 
       <template v-else>
-        <ChatWelcome v-model="input" :streaming="chat.streaming" @send="onSend" @stop="chat.stop()" />
+        <ChatWelcome
+          v-model="input"
+          :streaming="chat.streaming"
+          :send-disabled="warehouseStale"
+          @send="onSend"
+          @stop="chat.stop()"
+        />
         <div v-if="chat.error" class="px-6 pb-6">
           <el-alert type="error" :title="chat.error" show-icon :closable="false">
             <div v-if="showMissingLlmCta || showMissingWarehouseCta" class="mt-2">

@@ -97,4 +97,21 @@ describe('StaleWarehouseSessionBanner', () => {
       useSessionsStore.getState().sessions.find((s) => s.id === newId)?.warehouseConnectionId,
     ).toBe('wh-new')
   })
+
+  it('notifies onStaleChange when banner becomes visible', async () => {
+    const onStaleChange = vi.fn()
+    useSessionsStore.getState().ensure('s1')
+    useSessionsStore.getState().setWarehouseConnectionId('s1', 'wh-old')
+    vi.mocked(fetchWarehouseStatus).mockResolvedValue({
+      has_active_connection: true,
+      active_connection_id: 'wh-new',
+      demo_allowed: false,
+      demo_mode: false,
+    })
+    render(<StaleWarehouseSessionBanner sessionId="s1" onStaleChange={onStaleChange} />)
+    await waitFor(() => {
+      expect(onStaleChange).toHaveBeenCalledWith(true)
+    })
+  })
+
 })

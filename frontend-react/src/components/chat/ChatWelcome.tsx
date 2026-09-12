@@ -35,12 +35,14 @@ export default function ChatWelcome({
   streaming,
   onSend,
   onStop,
+  sendDisabled = false,
 }: {
   value: string
   onChange: (value: string) => void
   streaming: boolean
   onSend: () => void
   onStop: () => void
+  sendDisabled?: boolean
 }) {
   return (
     <div className="chat-canvas-bg flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
@@ -67,6 +69,7 @@ export default function ChatWelcome({
             streaming={streaming}
             onSend={onSend}
             onStop={onStop}
+            sendDisabled={sendDisabled}
             autoFocus
           />
         </div>
@@ -76,8 +79,9 @@ export default function ChatWelcome({
             <button
               key={label}
               type="button"
+              disabled={sendDisabled}
               onClick={() => onChange(prompt)}
-              className="group flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)]/80 px-4 py-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary)]/40 hover:shadow-[var(--shadow-float)]"
+              className="group flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)]/80 px-4 py-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary)]/40 hover:shadow-[var(--shadow-float)] disabled:pointer-events-none disabled:opacity-50"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-muted)] text-[var(--color-primary)] transition-colors duration-200 group-hover:bg-[var(--color-primary)] group-hover:text-white">
                 <Icon size={16} aria-hidden="true" />

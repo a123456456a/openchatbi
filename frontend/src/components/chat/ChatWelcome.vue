@@ -7,6 +7,7 @@ import InterruptPrompt from './InterruptPrompt.vue'
 defineProps<{
   modelValue: string
   streaming: boolean
+  sendDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,6 +37,7 @@ const QUICK_PROMPTS = [
         <ChatComposer
           :model-value="modelValue"
           :streaming="streaming"
+          :send-disabled="sendDisabled"
           autofocus
           @update:model-value="(v: string) => emit('update:modelValue', v)"
           @send="emit('send')"
@@ -48,7 +50,8 @@ const QUICK_PROMPTS = [
           v-for="q in QUICK_PROMPTS"
           :key="q.label"
           type="button"
-          class="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-card)] px-3.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+          :disabled="sendDisabled"
+          class="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-card)] px-3.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] disabled:pointer-events-none disabled:opacity-50"
           @click="emit('update:modelValue', q.prompt)"
         >
           <el-icon :size="14"><component :is="q.icon" /></el-icon>
