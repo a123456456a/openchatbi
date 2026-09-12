@@ -15,6 +15,13 @@ enable_fail_closed_sql_guard: true
 enable_confidence_gate: true
 sql_confidence_threshold: 0.7
 
+# Report files (save_report) are stored under ``{report_directory}/{user_id}/``.
+# report_directory: "./data"
+# Retain per-user report files for N days (default 30). Set to 0 to disable TTL cleanup.
+# Only files inside user subdirectories are deleted; root files such as auth.db /
+# checkpoints.db / run_cancels.db are never touched. Env REPORT_TTL_DAYS overrides this.
+# report_ttl_days: 30
+
 # Python Code Execution Configuration
 # Options: "local", "restricted_local", "docker"
 # - local: Run code in the current Python process (fastest, least secure)

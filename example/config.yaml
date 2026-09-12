@@ -1,5 +1,9 @@
 organization: MyCompany
 dialect: sqlite
+# Report retention (per-user files under report_directory/{user_id}/).
+# Default 30 days; set 0 to disable. Does not delete auth/checkpoint DBs at report root.
+report_ttl_days: 30
+
 bi_config_file: example/bi.yaml
 
 # SQL Execution Result Limit Configuration

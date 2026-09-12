@@ -308,6 +308,8 @@ The configuration template is provided at `config.yaml.template`. Key configurat
 - `organization`: Organization name (e.g., "Your Company")
 - `dialect`: Database dialect (e.g., "presto")
 - `bi_config_file`: Path to BI configuration file (e.g., "example/bi.yaml")
+- `report_directory`: Root directory for saved reports (default `./data`). Files are stored under `{report_directory}/{user_id}/`.
+- `report_ttl_days`: Days to retain per-user report files (default **30**). Set to `0` (or `null`) to disable TTL cleanup. Env `REPORT_TTL_DAYS` overrides the YAML value. Cleanup runs on API startup and after each successful `save_report`; it **only** deletes files inside user subdirectories and never touches root files such as `auth.db`, `checkpoints.db`, or `run_cancels.db`.
 
 ### Catalog Store Configuration
 

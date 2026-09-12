@@ -27,3 +27,14 @@ def test_config_template_enables_sql_guard_and_confidence_gate():
     assert cfg.get("enable_fail_closed_sql_guard") is True
     assert cfg.get("enable_confidence_gate") is True
     assert float(cfg.get("sql_confidence_threshold", 0)) > 0
+
+
+def test_example_config_report_ttl_default_thirty_days():
+    cfg = _load_yaml("example/config.yaml")
+    assert cfg.get("report_ttl_days") == 30
+
+
+def test_config_template_documents_report_ttl():
+    raw = (REPO_ROOT / "openchatbi" / "config.yaml.template").read_text(encoding="utf-8")
+    assert "report_ttl_days" in raw
+    assert "REPORT_TTL_DAYS" in raw
