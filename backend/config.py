@@ -57,6 +57,9 @@ def demo_warehouse_allowed(allow_demo_warehouse: bool, app_env: str) -> bool:
 
 class Settings(BaseSettings):
     jwt_secret: str = Field(default="dev-only-change-me", alias="JWT_SECRET")
+    # Fernet key material for stored LLM API keys / warehouse passwords.
+    # Prefer a dedicated value so rotating JWT_SECRET does not break decryptability;
+    # when unset, crypto falls back to jwt_secret with a warning.
     llm_settings_secret: str | None = Field(default=None, alias="LLM_SETTINGS_SECRET")
     access_token_minutes: int = 30
     refresh_token_days: int = 14
