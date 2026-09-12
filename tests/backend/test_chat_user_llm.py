@@ -359,7 +359,10 @@ def test_abort_interrupt_clears_paused_thread(client):
         )
         assert aborted.status_code == 200
         assert aborted.json() == {"aborted": True, "had_interrupt": True}
-        checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+        assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+            "u-s1",
+            "u-s1:data_analysis",
+        ]
 
         noop = client.post(
             "/api/chat/sessions/s1/abort-interrupt",
@@ -391,7 +394,10 @@ def test_abort_interrupt_without_llm_settings_clears_paused_thread(client):
 
     assert aborted.status_code == 200
     assert aborted.json() == {"aborted": True, "had_interrupt": True}
-    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    assert [c.args[0] for c in checkpointer.adelete_thread.await_args_list] == [
+        "u-s1",
+        "u-s1:data_analysis",
+    ]
     build_graph.assert_not_called()
     resolve_llm.assert_not_called()
 
