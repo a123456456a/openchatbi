@@ -2,9 +2,9 @@ name: Build and Deploy Documentation
 
 on:
   push:
-    branches: [ main, local-main ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, local-main ]
+    branches: [ main ]
 
 permissions:
   contents: read
