@@ -3,8 +3,18 @@ name: CI
 on:
   push:
     branches: [ main, local-main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - 'CONTRIBUTING.md'
   pull_request:
     branches: [ main, local-main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - 'CONTRIBUTING.md'
 
 permissions:
   contents: read
