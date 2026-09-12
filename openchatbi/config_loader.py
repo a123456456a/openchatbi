@@ -93,6 +93,9 @@ class Config(BaseModel):
 
     # Report Configuration
     report_directory: str = "./data"
+    # Days to retain per-user report files under ``{report_directory}/{user_id}/``.
+    # Default 30. Set to 0 (or null) to disable TTL cleanup. Env ``REPORT_TTL_DAYS`` overrides.
+    report_ttl_days: int | None = 30
 
     # Code Execution Configuration
     python_executor: str = "local"  # Options: "local", "restricted_local", "docker"

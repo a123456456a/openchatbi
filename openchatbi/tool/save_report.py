@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from openchatbi import config as app_config
 from openchatbi.observability.context import get_run_context
 from openchatbi.tool.report_writers import write_docx, write_xlsx
+from openchatbi.report_cleanup import cleanup_expired_reports, resolve_report_ttl_days
 from openchatbi.utils import get_user_report_directory, log, sanitize_report_user_id
 
 TEXT_FORMATS = {"md", "csv", "txt", "json", "html", "xml"}
@@ -105,6 +106,13 @@ def save_report(
                 f.write(content)
 
         log(f"Report saved: {file_path}")
+
+        # Best-effort TTL cleanup for this user's report directory (root DBs untouched).
+        try:
+            ttl = resolve_report_ttl_days(getattr(app_config.get(), "report_ttl_days", 30))
+            cleanup_expired_reports(app_config.get().report_directory, ttl, user_id=user_id)
+        except Exception as cleanup_exc:
+            log(f"Report TTL cleanup after save failed: {cleanup_exc}")
 
         # Download URL stays basename-only; ownership is enforced via auth on download
         download_url = f"/api/download/report/{filename}"

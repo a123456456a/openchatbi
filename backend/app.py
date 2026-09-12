@@ -33,6 +33,14 @@ async def lifespan(app: FastAPI):
     from backend.llm.checkpointer import cleanup_async_checkpointer, get_async_checkpointer
 
     await get_async_checkpointer()
+    # Best-effort TTL cleanup for per-user report files (never touches auth/checkpoint DBs).
+    try:
+        from openchatbi.report_cleanup import run_report_ttl_cleanup_from_config
+
+        run_report_ttl_cleanup_from_config()
+    except Exception:
+        # Do not block startup if cleanup fails (e.g. config not loaded in some test paths).
+        pass
     try:
         yield
     finally:
