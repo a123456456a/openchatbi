@@ -2,24 +2,36 @@ import { useEffect, useMemo, useRef } from 'react'
 
 import { buildChartConfig } from '@/lib/chartConfig'
 import { parseCsv } from '@/lib/csv'
-import echarts, { type ECharts } from '@/lib/echartsSetup'
+import type { ECharts } from '@/lib/echartsSetup'
 import DataTable from './DataTable'
 
 function EChartsCanvas({ option }: { option: NonNullable<ReturnType<typeof buildChartConfig>> }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<ECharts | null>(null)
+  const optionRef = useRef(option)
+  optionRef.current = option
 
   useEffect(() => {
-    if (!containerRef.current) return
-    chartRef.current = echarts.init(containerRef.current)
-    const resizeObserver = new ResizeObserver(() => chartRef.current?.resize())
-    resizeObserver.observe(containerRef.current)
+    const el = containerRef.current
+    if (!el) return
+    let cancelled = false
+    let resizeObserver: ResizeObserver | null = null
+
+    void import('@/lib/echartsSetup').then(({ default: echarts }) => {
+      if (cancelled || !containerRef.current) return
+      const chart = echarts.init(containerRef.current)
+      chartRef.current = chart
+      chart.setOption(optionRef.current, true)
+      resizeObserver = new ResizeObserver(() => chartRef.current?.resize())
+      resizeObserver.observe(containerRef.current)
+    })
+
     return () => {
-      resizeObserver.disconnect()
+      cancelled = true
+      resizeObserver?.disconnect()
       chartRef.current?.dispose()
       chartRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

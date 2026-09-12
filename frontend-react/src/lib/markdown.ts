@@ -1,5 +1,5 @@
 import DOMPurify from 'dompurify'
-import hljs from 'highlight.js'
+import hljs from 'highlight.js/lib/common'
 import katex from 'katex'
 import MarkdownIt, { type RendererRule } from 'markdown-it'
 import deflist from 'markdown-it-deflist'
@@ -10,12 +10,25 @@ import sup from 'markdown-it-sup'
 import taskLists from 'markdown-it-task-lists'
 import texmath from 'markdown-it-texmath'
 
-/** Fence languages rendered as interactive widgets (post-processed after `dangerouslySetInnerHTML`). */
-export const MERMAID_LANG = 'mermaid'
-export const ECHARTS_LANG = 'echarts'
-export const ECHARTS_BLOCK_CLASS = 'echarts-block'
-export const ECHARTS_OPTION_ATTR = 'data-option'
-export const MERMAID_BLOCK_CLASS = 'mermaid'
+import 'highlight.js/styles/github.css'
+import 'katex/dist/katex.min.css'
+
+import {
+  ECHARTS_BLOCK_CLASS,
+  ECHARTS_LANG,
+  ECHARTS_OPTION_ATTR,
+  MERMAID_BLOCK_CLASS,
+  MERMAID_LANG,
+} from '@/lib/markdownConstants'
+
+export {
+  ECHARTS_BLOCK_CLASS,
+  ECHARTS_LANG,
+  ECHARTS_OPTION_ATTR,
+  MERMAID_BLOCK_CLASS,
+  MERMAID_LANG,
+  decodeOption,
+} from '@/lib/markdownConstants'
 
 const md: InstanceType<typeof MarkdownIt> = new MarkdownIt({
   html: false,
@@ -24,6 +37,8 @@ const md: InstanceType<typeof MarkdownIt> = new MarkdownIt({
   highlight(code: string, lang: string): string {
     const language = lang && hljs.getLanguage(lang) ? lang : undefined
     try {
+      // Prefer an explicit fence language; fall back to auto among the common subset
+      // (not the full 190+ language dump) so unknown fences still get some coloring.
       const result = language ? hljs.highlight(code, { language }) : hljs.highlightAuto(code)
       return `<pre class="hljs"><code>${result.value}</code></pre>`
     } catch {
@@ -49,18 +64,9 @@ function encodeOption(raw: string): string {
   }
 }
 
-/** Decode a base64 payload written by {@link encodeOption} back into the original UTF-8 string. */
-export function decodeOption(encoded: string): string {
-  try {
-    return decodeURIComponent(escape(window.atob(encoded)))
-  } catch {
-    return ''
-  }
-}
-
 // Fenced ```mermaid``` blocks render as diagrams and ```echarts``` blocks (a JSON ECharts
 // `option`) render as interactive charts; both are inert markup here and get upgraded to
-// live widgets by `enhanceMarkdown()` once the sanitized HTML is mounted in the DOM.
+// live widgets by `useMarkdownEnhancements()` once the sanitized HTML is mounted in the DOM.
 const defaultFence: RendererRule =
   md.renderer.rules.fence ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
 md.renderer.rules.fence = (tokens, idx, options, env, self) => {

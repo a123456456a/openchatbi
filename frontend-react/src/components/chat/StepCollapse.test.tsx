@@ -16,13 +16,13 @@ function step(partial: Partial<ChatStep> & Pick<ChatStep, 'id' | 'kind'>): ChatS
 }
 
 describe('StepCollapse', () => {
-  it('expands process steps by default', () => {
+  it('expands process steps by default', async () => {
     render(
       <StepCollapse
         steps={[step({ id: 'sql1', kind: 'sql', label: '生成 SQL', text: 'SELECT 1' })]}
       />,
     )
-    expect(screen.getByText('SELECT 1')).toBeVisible()
+    expect(await screen.findByText('SELECT 1')).toBeVisible()
     expect(screen.getByRole('button', { name: /生成 SQL/ })).toHaveAttribute('aria-expanded', 'true')
   })
 
