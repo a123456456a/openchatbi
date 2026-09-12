@@ -85,12 +85,11 @@ def test_cancel_endpoint_clears_thread_and_signals_run(client):
     _put_deepseek(client, tok["access_token"])
 
     checkpointer = AsyncMock()
-    mock_graph = MagicMock()
-    mock_graph.checkpointer = checkpointer
 
     with (
-        patch("backend.chat.routes.build_chat_model", return_value=MagicMock()),
-        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock(return_value=mock_graph)),
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock()) as build_graph,
+        patch("backend.chat.routes.resolve_user_chat_llm") as resolve_llm,
         patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
         patch("backend.chat.routes.request_cancel", new=AsyncMock(return_value=True)) as req_cancel,
     ):
@@ -106,6 +105,53 @@ def test_cancel_endpoint_clears_thread_and_signals_run(client):
     assert body["thread_cleared"] is True
     checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
     req_cancel.assert_awaited_once_with("u-s1")
+    build_graph.assert_not_called()
+    resolve_llm.assert_not_called()
+
+
+def test_cancel_without_llm_settings_succeeds(client):
+    """Stop/cancel must not require /api/me/llm-settings."""
+    from tests.backend.test_chat_user_llm import _bootstrap_admin
+
+    tok = _bootstrap_admin(client)
+    checkpointer = AsyncMock()
+
+    with (
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock()) as build_graph,
+        patch("backend.chat.routes.resolve_user_chat_llm") as resolve_llm,
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+        patch("backend.chat.routes.request_cancel", new=AsyncMock(return_value=False)),
+    ):
+        r = client.post(
+            "/api/chat/sessions/s1/cancel",
+            headers=_auth(tok["access_token"]),
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["cancelled"] is True
+    assert body["had_running_run"] is False
+    assert body["thread_cleared"] is True
+    assert "设置" not in str(body)
+    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    build_graph.assert_not_called()
+    resolve_llm.assert_not_called()
+
+
+def test_checkpoint_has_interrupt_detects_langgraph_write():
+    from backend.chat.routes import _checkpoint_has_interrupt
+
+    assert _checkpoint_has_interrupt(None) is False
+    idle = MagicMock()
+    idle.pending_writes = [("task-1", "messages", {"ok": True})]
+    assert _checkpoint_has_interrupt(idle) is False
+    paused = MagicMock()
+    paused.pending_writes = [("task-1", "__interrupt__", [{"text": "Approve?"}])]
+    assert _checkpoint_has_interrupt(paused) is True
+    empty = MagicMock()
+    empty.pending_writes = None
+    assert _checkpoint_has_interrupt(empty) is False
 
 
 def test_stream_after_cancel_starts_fresh_message_not_resume(client):

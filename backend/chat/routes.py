@@ -25,6 +25,7 @@ from backend.chat.run_control import (
 )
 from backend.chat.schemas import AbortInterruptResponse, CancelRunResponse, ChatStreamRequest
 from backend.db import get_db
+from backend.llm.checkpointer import get_async_checkpointer
 from backend.llm.crypto import decrypt_api_key
 from backend.llm.factory import build_chat_model
 from backend.llm.graph_cache import get_or_build_graph
@@ -122,6 +123,10 @@ def _json_safe(obj: Any) -> Any:
         return str(obj)
 
 
+# LangGraph stores paused HITL / interrupt() writes under this channel key.
+_INTERRUPT_WRITE_KEY = "__interrupt__"
+
+
 async def _clear_thread_state(graph: Any, thread_id: str) -> bool:
     """Delete checkpoint thread so the next message cannot resume a half-finished turn."""
     checkpointer = getattr(graph, "checkpointer", None)
@@ -129,6 +134,60 @@ async def _clear_thread_state(graph: Any, thread_id: str) -> bool:
         return False
     await checkpointer.adelete_thread(thread_id)
     return True
+
+
+async def _clear_thread_by_id(thread_id: str) -> bool:
+    """Delete a checkpoint thread via the shared checkpointer (no agent graph / LLM)."""
+    checkpointer = await get_async_checkpointer()
+    if checkpointer is None:
+        return False
+    await checkpointer.adelete_thread(thread_id)
+    return True
+
+
+def _checkpoint_has_interrupt(saved: Any) -> bool:
+    """True when a checkpointer tuple has a pending LangGraph interrupt write."""
+    if saved is None:
+        return False
+    for write in saved.pending_writes or []:
+        if len(write) >= 2 and write[1] == _INTERRUPT_WRITE_KEY:
+            return True
+    return False
+
+
+async def _optional_user_graph(db: Session, user: User):
+    """Return the compiled graph when LLM settings exist; None if unconfigured.
+
+    Stop/cancel/abort must not depend on model configuration. Decrypt / factory
+    errors for a configured provider are still surfaced (unchanged).
+    """
+    if not user.active_llm_provider:
+        return None
+    try:
+        provider, llm, config_hash = resolve_user_chat_llm(db, user)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_400_BAD_REQUEST and exc.detail == MISSING_LLM_SETTINGS_DETAIL:
+            return None
+        raise
+    try:
+        return await get_or_build_graph(user.id, provider, llm, config_hash)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+async def _abort_interrupt_via_checkpointer(run_config: dict[str, Any], thread_id: str) -> AbortInterruptResponse:
+    """Drop a paused thread using only the shared checkpointer (no graph build)."""
+    checkpointer = await get_async_checkpointer()
+    if checkpointer is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Agent graph has no checkpointer; cannot abort interrupt",
+        )
+    saved = await checkpointer.aget_tuple(run_config)
+    if not _checkpoint_has_interrupt(saved):
+        return AbortInterruptResponse(aborted=False, had_interrupt=False)
+    await checkpointer.adelete_thread(thread_id)
+    return AbortInterruptResponse(aborted=True, had_interrupt=True)
 
 
 @chat_router.post("/chat/stream")
@@ -262,15 +321,11 @@ async def cancel_chat_run(
 
     had_running = await request_cancel(thread_id)
 
-    provider, llm, config_hash = resolve_user_chat_llm(db, current_user)
-    try:
-        graph = await get_or_build_graph(user_id, provider, llm, config_hash)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
+    # Thread cleanup uses the shared checkpointer only — do not build the agent
+    # graph (and therefore do not require LLM settings) just to stop a run.
     thread_cleared = False
     try:
-        thread_cleared = await _clear_thread_state(graph, thread_id)
+        thread_cleared = await _clear_thread_by_id(thread_id)
     except Exception as exc:
         logger.exception("cancel: adelete_thread failed for %s", thread_id)
         raise HTTPException(
@@ -295,18 +350,17 @@ async def abort_chat_interrupt(
     user_id = current_user.id
     require_active_warehouse_or_demo(db)
     run_config = build_run_config(user_id=user_id, session_id=session_id)
+    thread_id = (run_config.get("configurable") or {}).get("thread_id") or f"{user_id}-{session_id}"
+    run_config.setdefault("configurable", {})["thread_id"] = thread_id
 
-    provider, llm, config_hash = resolve_user_chat_llm(db, current_user)
-    try:
-        graph = await get_or_build_graph(user_id, provider, llm, config_hash)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    graph = await _optional_user_graph(db, current_user)
+    if graph is None:
+        return await _abort_interrupt_via_checkpointer(run_config, thread_id)
 
     pending_state = await graph.aget_state(run_config)
     if not pending_state.interrupts:
         return AbortInterruptResponse(aborted=False, had_interrupt=False)
 
-    thread_id = run_config["configurable"]["thread_id"]
     checkpointer = graph.checkpointer
     if checkpointer is None:
         raise HTTPException(
