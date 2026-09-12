@@ -13,6 +13,10 @@ import { useChatStore } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
 
 const props = defineProps<{ sessionId: string }>()
+const emit = defineEmits<{
+  /** Notifies ChatView so the composer can block send while this banner is visible. */
+  staleChange: [stale: boolean]
+}>()
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -24,6 +28,11 @@ const currentWarehouseId = ref<string | null>(null)
 const message = STALE_WAREHOUSE_SESSION_MESSAGE
 const ctaLabel = STALE_WAREHOUSE_NEW_CHAT_LABEL
 
+function publishStale(next: boolean) {
+  stale.value = next
+  emit('staleChange', next)
+}
+
 const boundWarehouseId = computed(
   () => sessions.sessions.find((s) => s.id === props.sessionId)?.warehouseConnectionId,
 )
@@ -32,7 +41,7 @@ let checkSeq = 0
 
 async function checkWarehouse() {
   if (!auth.isAuthenticated || !props.sessionId) {
-    stale.value = false
+    publishStale(false)
     return
   }
   const seq = ++checkSeq
@@ -45,17 +54,17 @@ async function checkWarehouse() {
     const verdict = evaluateSessionWarehouse(bound, current)
     if (verdict === 'bind') {
       sessions.setWarehouseConnectionId(props.sessionId, current)
-      stale.value = false
+      publishStale(false)
       return
     }
     if (verdict === 'stale') {
       chat.stop()
-      stale.value = true
+      publishStale(true)
       return
     }
-    stale.value = false
+    publishStale(false)
   } catch {
-    if (seq === checkSeq) stale.value = false
+    if (seq === checkSeq) publishStale(false)
   }
 }
 
@@ -76,12 +85,13 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('focus', onFocus)
   document.removeEventListener('visibilitychange', onVisibility)
+  publishStale(false)
 })
 
 watch(
   () => props.sessionId,
   () => {
-    stale.value = false
+    publishStale(false)
     void checkWarehouse()
   },
 )
@@ -89,7 +99,7 @@ watch(
 watch(boundWarehouseId, (bound) => {
   if (bound === undefined) return
   if (evaluateSessionWarehouse(bound, currentWarehouseId.value) === 'ok') {
-    stale.value = false
+    publishStale(false)
   }
 })
 
@@ -97,7 +107,7 @@ function startNewChat() {
   const id = crypto.randomUUID()
   sessions.ensure(id)
   sessions.setWarehouseConnectionId(id, currentWarehouseId.value)
-  stale.value = false
+  publishStale(false)
   void router.push({ name: 'chat-session', params: { sessionId: id } })
 }
 </script>

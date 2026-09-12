@@ -6,6 +6,8 @@ import DemoWarehouseComposerHint from '../common/DemoWarehouseComposerHint.vue'
 const props = defineProps<{
   modelValue: string
   streaming: boolean
+  /** When true (e.g. stale warehouse banner visible), block send / Enter. */
+  sendDisabled?: boolean
   autofocus?: boolean
   placeholder?: string
 }>()
@@ -19,7 +21,7 @@ const emit = defineEmits<{
 const placeholder = props.placeholder ?? '输入数据分析问题，例如：上周销售额按品类汇总…'
 
 function onSend() {
-  if (!props.modelValue.trim() || props.streaming) return
+  if (!props.modelValue.trim() || props.streaming || props.sendDisabled) return
   emit('send')
 }
 
@@ -41,7 +43,7 @@ function onKeydown(e: KeyboardEvent) {
       :rows="1"
       resize="none"
       :placeholder="placeholder"
-      :disabled="streaming"
+      :disabled="streaming || sendDisabled"
       :autofocus="autofocus"
       class="chat-composer"
       @update:model-value="(v: string) => emit('update:modelValue', v)"
@@ -68,7 +70,7 @@ function onKeydown(e: KeyboardEvent) {
           type="button"
           aria-label="发送"
           title="发送"
-          :disabled="!modelValue.trim()"
+          :disabled="!modelValue.trim() || sendDisabled"
           class="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-foreground)] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
           @click="onSend"
         >

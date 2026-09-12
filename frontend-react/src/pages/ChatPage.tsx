@@ -69,7 +69,13 @@ function ChatStreamingBadge() {
  * Composer input lives here (not in ChatPage) so each keystroke only re-renders this subtree —
  * not the markdown-heavy transcript. That is the main typing INP win once messages exist.
  */
-function ActiveChatComposer({ sessionId }: { sessionId: string }) {
+function ActiveChatComposer({
+  sessionId,
+  sendDisabled = false,
+}: {
+  sessionId: string
+  sendDisabled?: boolean
+}) {
   const navigate = useNavigate()
   const ensure = useSessionsStore((s) => s.ensure)
   const streaming = useChatStore((s) => s.streaming)
@@ -82,7 +88,7 @@ function ActiveChatComposer({ sessionId }: { sessionId: string }) {
   }, [sessionId])
 
   function onSend() {
-    if (!input.trim()) return
+    if (sendDisabled || !input.trim()) return
     const text = input
     setInput('')
     void send(sessionId, text)
@@ -105,13 +111,20 @@ function ActiveChatComposer({ sessionId }: { sessionId: string }) {
           onSend={onSend}
           onStop={stop}
           onNewChat={newChat}
+          sendDisabled={sendDisabled}
         />
       </div>
     </div>
   )
 }
 
-function WelcomePane({ sessionId }: { sessionId: string }) {
+function WelcomePane({
+  sessionId,
+  sendDisabled = false,
+}: {
+  sessionId: string
+  sendDisabled?: boolean
+}) {
   const navigate = useNavigate()
   const streaming = useChatStore((s) => s.streaming)
   const send = useChatStore((s) => s.send)
@@ -126,7 +139,7 @@ function WelcomePane({ sessionId }: { sessionId: string }) {
   }, [sessionId])
 
   function onSend() {
-    if (!input.trim()) return
+    if (sendDisabled || !input.trim()) return
     const text = input
     setInput('')
     void send(sessionId, text)
@@ -134,7 +147,14 @@ function WelcomePane({ sessionId }: { sessionId: string }) {
 
   return (
     <>
-      <ChatWelcome value={input} onChange={setInput} streaming={streaming} onSend={onSend} onStop={stop} />
+      <ChatWelcome
+        value={input}
+        onChange={setInput}
+        streaming={streaming}
+        onSend={onSend}
+        onStop={stop}
+        sendDisabled={sendDisabled}
+      />
       {error && (
         <div className="px-6 pb-6">
           <Alert variant="destructive">
@@ -167,6 +187,11 @@ export default function ChatPage() {
   const loadSession = useChatStore((s) => s.loadSession)
   // Boolean selector: only re-render when empty ↔ non-empty flips, not on every stream token.
   const hasMessages = useChatStore((s) => s.messages.length > 0)
+  const [warehouseStale, setWarehouseStale] = useState(false)
+
+  useEffect(() => {
+    setWarehouseStale(false)
+  }, [sessionId])
 
   useEffect(() => {
     if (!sessionId) {
@@ -184,7 +209,9 @@ export default function ChatPage() {
   return (
     <AppShell>
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--color-background)]">
-        {sessionId ? <StaleWarehouseSessionBanner sessionId={sessionId} /> : null}
+        {sessionId ? (
+          <StaleWarehouseSessionBanner sessionId={sessionId} onStaleChange={setWarehouseStale} />
+        ) : null}
         {hasMessages && sessionId ? (
           <>
             <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-card)]/90 px-6 py-3 backdrop-blur-sm">
@@ -193,10 +220,10 @@ export default function ChatPage() {
             </header>
             <ChatTranscript />
             <ChatErrorBanner />
-            <ActiveChatComposer sessionId={sessionId} />
+            <ActiveChatComposer sessionId={sessionId} sendDisabled={warehouseStale} />
           </>
         ) : sessionId ? (
-          <WelcomePane sessionId={sessionId} />
+          <WelcomePane sessionId={sessionId} sendDisabled={warehouseStale} />
         ) : null}
       </div>
     </AppShell>
