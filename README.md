@@ -113,6 +113,11 @@ sudo apt-get install libsqlite3-dev
 uv sync
 # Production-safe: set a strong secret (required unless you opt into insecure defaults).
 export JWT_SECRET="$(openssl rand -hex 32)"
+# Dedicated secret for encrypting stored LLM API keys / warehouse passwords.
+# Recommended in production so JWT rotation does not break decryptability:
+#   export LLM_SETTINGS_SECRET="$(openssl rand -hex 32)"
+# If unset, falls back to JWT_SECRET with a warning. To migrate existing data,
+# first set LLM_SETTINGS_SECRET to the *current* JWT_SECRET value.
 # Local demo only — alternatively allow the built-in demo secret:
 #   export ALLOW_INSECURE_DEFAULTS=true
 #   # or: export APP_ENV=development
@@ -129,6 +134,15 @@ runs **refuse to start** with that secret. For local demo you must either set a 
 `JWT_SECRET`, or explicitly opt in with `ALLOW_INSECURE_DEFAULTS=true` or
 `APP_ENV=development` (never enable those in production).
 
+**LLM / warehouse encryption secret (`LLM_SETTINGS_SECRET`):** stored user LLM API keys and
+admin warehouse passwords are Fernet-encrypted via `backend/llm/crypto.py`. Prefer a dedicated
+`LLM_SETTINGS_SECRET` so **rotating `JWT_SECRET` does not make previously encrypted values
+undecryptable**. If unset (or blank), the service falls back to deriving the Fernet key from
+`JWT_SECRET` (legacy behavior) and logs a clear warning once per process. Migration: set
+`LLM_SETTINGS_SECRET` to the **current** `JWT_SECRET` value first (keeps existing ciphertext
+readable), then you may rotate `JWT_SECRET` independently; optionally re-save keys later under
+the new dedicated secret if you want to stop depending on the old material.
+
 **No silent demo warehouse:** chat / Text2SQL **fail closed** unless an admin has activated a
 data warehouse connection in `/admin/databases`. Without an active connection the API returns
 `400` with `请先在管理端激活数仓` instead of silently querying `example/tracking_orders.sqlite`.
@@ -143,7 +157,7 @@ JWT); the UI then shows a visible 「演示数据」 banner so it cannot be mist
 
 登录后点击侧栏底栏齿轮图标，打开「模型设置」Dialog。选择供应商（DeepSeek、智谱、OpenAI、Anthropic、Gemini、OpenAI 兼容等），填写 API Key、模型名，必要时填写 Base URL（OpenAI 兼容必填），保存后设为当前活跃供应商。
 
-主路径聊天完全由每位用户自己的配置驱动：服务端按 `active_llm_provider` 与加密存储的 Key 动态建连，**不再**使用 `config.yaml` 里 `llm_providers` 的下拉切换。未配置 Key 时聊天会返回 400。`GET /api/me/llm-settings` 仅返回掩码后的 Key 与 `has_key`，完整 Key 不会下发给其他用户。
+主路径聊天完全由每位用户自己的配置驱动：服务端按 `active_llm_provider` 与加密存储的 Key 动态建连，**不再**使用 `config.yaml` 里 `llm_providers` 的下拉切换。未配置 Key 时聊天会返回 400。`GET /api/me/llm-settings` 仅返回掩码后的 Key 与 `has_key`，完整 Key 不会下发给其他用户。Key 使用 `LLM_SETTINGS_SECRET`（未设置时回退 `JWT_SECRET` 并告警）派生的 Fernet 密钥加密；生产环境请单独配置 `LLM_SETTINGS_SECRET`，避免轮换 JWT 导致已存 Key 无法解密。
 
 **管理员数据库管理（主路径）：**
 
