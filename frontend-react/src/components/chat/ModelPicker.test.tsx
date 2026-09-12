@@ -66,6 +66,9 @@ describe('ModelPicker + setActiveProvider', () => {
     expect(useSettingsStore.getState().error).toBe('供应商不可用')
 
     render(<ModelPicker />)
+    // load() clears prior store errors on mount — re-apply after fetch settles.
+    await waitFor(() => expect(fetchLlmSettings).toHaveBeenCalled())
+    useSettingsStore.setState({ error: '供应商不可用' })
     expect(await screen.findByRole('alert')).toHaveTextContent('供应商不可用')
     expect(screen.getByRole('button', { name: /去设置/ })).toBeVisible()
   })
