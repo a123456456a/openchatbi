@@ -369,6 +369,54 @@ def test_abort_interrupt_clears_paused_thread(client):
         assert noop.json() == {"aborted": False, "had_interrupt": False}
 
 
+def test_abort_interrupt_without_llm_settings_clears_paused_thread(client):
+    """Dismissing an interrupt must work before the user configures a model."""
+    tok = _bootstrap_admin(client)
+
+    saved = MagicMock()
+    saved.pending_writes = [("task-1", "__interrupt__", [{"text": "Approve?"}])]
+    checkpointer = AsyncMock()
+    checkpointer.aget_tuple = AsyncMock(return_value=saved)
+
+    with (
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock()) as build_graph,
+        patch("backend.chat.routes.resolve_user_chat_llm") as resolve_llm,
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+    ):
+        aborted = client.post(
+            "/api/chat/sessions/s1/abort-interrupt",
+            headers=_auth(tok["access_token"]),
+        )
+
+    assert aborted.status_code == 200
+    assert aborted.json() == {"aborted": True, "had_interrupt": True}
+    checkpointer.adelete_thread.assert_awaited_once_with("u-s1")
+    build_graph.assert_not_called()
+    resolve_llm.assert_not_called()
+
+
+def test_abort_interrupt_without_llm_settings_is_successful_noop(client):
+    tok = _bootstrap_admin(client)
+    checkpointer = AsyncMock()
+    checkpointer.aget_tuple = AsyncMock(return_value=None)
+
+    with (
+        patch("backend.chat.routes.get_async_checkpointer", new=AsyncMock(return_value=checkpointer)),
+        patch("backend.chat.routes.get_or_build_graph", new=AsyncMock()) as build_graph,
+        patch("backend.chat.routes.build_run_config", return_value={"configurable": {"thread_id": "u-s1"}}),
+    ):
+        noop = client.post(
+            "/api/chat/sessions/s1/abort-interrupt",
+            headers=_auth(tok["access_token"]),
+        )
+
+    assert noop.status_code == 200
+    assert noop.json() == {"aborted": False, "had_interrupt": False}
+    checkpointer.adelete_thread.assert_not_awaited()
+    build_graph.assert_not_called()
+
+
 def test_chat_starts_fresh_message_after_abort_not_resume(client):
     """After aborting a paused interrupt, the next stream must not use Command(resume=...)."""
     from langgraph.types import Command
