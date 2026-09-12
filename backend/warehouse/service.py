@@ -322,6 +322,10 @@ def _apply_connection_to_runtime(
                 "Cleared %s LangGraph checkpoint thread(s) after warehouse activation",
                 cleared,
             )
+            # Surface to admin UIs via runtime_apply.message — only when clear
+            # succeeded and there is no higher-priority error (e.g. index reload).
+            if status.message is None:
+                status.message = "数仓已激活，catalog 已同步并重建索引；进行中的对话上下文已重置"
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Warehouse activated but clearing checkpoint threads failed: %s",
