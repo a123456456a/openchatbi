@@ -9,10 +9,12 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useDeferredValue, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
+import { fetchWarehouseStatus } from '@/api/warehouseStatus'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -22,6 +24,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import {
+  STALE_WAREHOUSE_SESSION_MESSAGE,
+  STALE_WAREHOUSE_SIDEBAR_BADGE,
+  isSessionWarehouseStale,
+} from '@/lib/sessionWarehouse'
+import { useAuthStore } from '@/stores/auth'
 import { useSessionsStore, type SessionMeta } from '@/stores/sessions'
 import DemoWarehouseBanner from '@/components/common/DemoWarehouseBanner'
 import SettingsDialog from './SettingsDialog'
@@ -58,9 +66,49 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const archive = useSessionsStore((s) => s.archive)
   const unarchive = useSessionsStore((s) => s.unarchive)
   const remove = useSessionsStore((s) => s.remove)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  /** `undefined` until `/api/warehouse/status` resolves; then mirrors `active_connection_id`. */
+  const [activeWarehouseId, setActiveWarehouseId] = useState<string | null | undefined>(undefined)
+
+  const refreshWarehouseStatus = useCallback(() => {
+    if (!isAuthenticated) {
+      setActiveWarehouseId(undefined)
+      return
+    }
+    void fetchWarehouseStatus()
+      .then((status) => {
+        setActiveWarehouseId(status.active_connection_id)
+      })
+      .catch(() => {
+        // Soft-fail: leave previous known id (or undefined) so we do not flash false positives.
+      })
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    refreshWarehouseStatus()
+  }, [refreshWarehouseStatus])
+
+  useEffect(() => {
+    function onFocus() {
+      refreshWarehouseStatus()
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'visible') refreshWarehouseStatus()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [refreshWarehouseStatus])
+
+  function sessionIsStale(s: SessionMeta) {
+    return isSessionWarehouseStale(s.warehouseConnectionId, activeWarehouseId)
+  }
   // Keep the search field responsive; defer filtering/re-layout of the session list (INP).
   const deferredQuery = useDeferredValue(query)
 
@@ -152,21 +200,28 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <div className="px-3 py-1 text-[11px] font-semibold tracking-wide text-[var(--color-muted-foreground)] uppercase">
                   {group.label}
                 </div>
-                {group.sessions.map((s) => (
+                {group.sessions.map((s) => {
+                  const stale = sessionIsStale(s)
+                  return (
                   <div
                     key={s.id}
                     className={
                       'group mb-0.5 flex items-center gap-1 rounded-lg transition-colors duration-200 ' +
-                      (params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-[var(--color-muted)]/60')
+                      (params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-[var(--color-muted)]/60') +
+                      (stale ? ' opacity-70' : '')
                     }
                   >
                     <button
                       type="button"
+                      title={stale ? STALE_WAREHOUSE_SESSION_MESSAGE : undefined}
+                      aria-label={stale ? `${s.title}（${STALE_WAREHOUSE_SIDEBAR_BADGE}）` : undefined}
                       className={
                         'relative flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200 ' +
-                        (params.sessionId === s.id
-                          ? 'font-medium text-[var(--color-primary)]'
-                          : 'text-slate-600 group-hover:text-[var(--color-foreground)]')
+                        (stale
+                          ? 'text-[var(--color-muted-foreground)]'
+                          : params.sessionId === s.id
+                            ? 'font-medium text-[var(--color-primary)]'
+                            : 'text-slate-600 group-hover:text-[var(--color-foreground)]')
                       }
                       onClick={() => openSession(s.id)}
                     >
@@ -178,6 +233,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
                         />
                       )}
                       <span className="truncate">{s.title}</span>
+                      {stale ? (
+                        <Badge
+                          variant="secondary"
+                          className="ml-auto shrink-0 border-amber-200/80 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-800"
+                        >
+                          {STALE_WAREHOUSE_SIDEBAR_BADGE}
+                        </Badge>
+                      ) : null}
                     </button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -201,7 +264,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             ))
           )}
@@ -213,20 +277,33 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 已归档（{archivedSessions.length}）
               </CollapsibleTrigger>
               <CollapsibleContent className="mt-0.5 space-y-0.5">
-                {archivedSessions.map((s) => (
+                {archivedSessions.map((s) => {
+                  const stale = sessionIsStale(s)
+                  return (
                   <div
                     key={s.id}
                     className={
-                      'group flex min-w-0 items-center gap-1 rounded-lg px-3 py-2 text-sm text-slate-500 transition-colors duration-200 ' +
+                      'group flex min-w-0 items-center gap-1 rounded-lg px-3 py-2 text-sm transition-colors duration-200 ' +
+                      (stale ? 'text-[var(--color-muted-foreground)] opacity-70 ' : 'text-slate-500 ') +
                       (params.sessionId === s.id ? 'bg-[var(--color-muted)]' : 'hover:bg-[var(--color-muted)]/60')
                     }
                   >
                     <button
                       type="button"
-                      className="min-w-0 flex-1 cursor-pointer truncate text-left"
+                      title={stale ? STALE_WAREHOUSE_SESSION_MESSAGE : undefined}
+                      aria-label={stale ? `${s.title}（${STALE_WAREHOUSE_SIDEBAR_BADGE}）` : undefined}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 truncate text-left"
                       onClick={() => openSession(s.id)}
                     >
-                      {s.title}
+                      <span className="truncate">{s.title}</span>
+                      {stale ? (
+                        <Badge
+                          variant="secondary"
+                          className="ml-auto shrink-0 border-amber-200/80 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-800"
+                        >
+                          {STALE_WAREHOUSE_SIDEBAR_BADGE}
+                        </Badge>
+                      ) : null}
                     </button>
                     <button
                       type="button"
@@ -247,7 +324,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       <Trash2 size={14} />
                     </button>
                   </div>
-                ))}
+                  )
+                })}
               </CollapsibleContent>
             </Collapsible>
           )}

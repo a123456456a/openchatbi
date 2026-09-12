@@ -9,6 +9,9 @@ export const STALE_WAREHOUSE_SESSION_MESSAGE = '数仓已切换，请新开对�
 /** CTA label for starting a fresh session after a warehouse switch. */
 export const STALE_WAREHOUSE_NEW_CHAT_LABEL = '新开对话'
 
+/** Compact sidebar badge for sessions bound to a previous warehouse. */
+export const STALE_WAREHOUSE_SIDEBAR_BADGE = '数仓已切换'
+
 export type SessionWarehouseVerdict = 'bind' | 'ok' | 'stale'
 
 /**
@@ -26,4 +29,17 @@ export function evaluateSessionWarehouse(
   if (boundWarehouseConnectionId === undefined) return 'bind'
   if (boundWarehouseConnectionId === currentActiveConnectionId) return 'ok'
   return 'stale'
+}
+
+/**
+ * Sidebar helper: mark a session only when status has loaded and the bound id
+ * differs from the live warehouse. Unbound (`undefined`) sessions stay unmarked
+ * until the chat page binds them; unknown status (`undefined` current) stays unmarked.
+ */
+export function isSessionWarehouseStale(
+  boundWarehouseConnectionId: string | null | undefined,
+  currentActiveConnectionId: string | null | undefined,
+): boolean {
+  if (currentActiveConnectionId === undefined) return false
+  return evaluateSessionWarehouse(boundWarehouseConnectionId, currentActiveConnectionId) === 'stale'
 }
