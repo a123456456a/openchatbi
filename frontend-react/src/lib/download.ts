@@ -1,5 +1,24 @@
 import { http } from '@/api/http'
 
+/** Map backend download failures to short, user-facing Chinese copy. */
+export async function downloadErrorMessage(res: Response): Promise<string> {
+  if (res.status === 401) return '登录已过期，请重新登录后再下载'
+  if (res.status === 403) return '当前账号无权限下载报表'
+  if (res.status === 404) return '报表不存在或已过期'
+
+  try {
+    const body = (await res.clone().json()) as { detail?: unknown }
+    if (typeof body.detail === 'string' && body.detail.trim()) {
+      if (body.detail === 'Forbidden') return '当前账号无权限下载报表'
+      return body.detail
+    }
+  } catch {
+    /* non-JSON error body */
+  }
+
+  return `下载失败：HTTP ${res.status}`
+}
+
 /**
  * Download a backend-protected file (e.g. `/api/download/report/...`) and save it client-side.
  *
@@ -9,7 +28,7 @@ import { http } from '@/api/http'
 export async function downloadFile(url: string, filename: string): Promise<void> {
   const res = await http(url)
   if (!res.ok) {
-    throw new Error(`下载失败：HTTP ${res.status}`)
+    throw new Error(await downloadErrorMessage(res))
   }
   const blob = await res.blob()
   const objectUrl = URL.createObjectURL(blob)
