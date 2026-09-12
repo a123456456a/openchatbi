@@ -6,6 +6,7 @@ from cryptography.fernet import InvalidToken
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from backend.llm.checkpointer import clear_all_checkpoint_threads_sync
 from backend.llm.crypto import decrypt_api_key, encrypt_api_key
 from backend.llm.graph_cache import invalidate_all_graphs
 from backend.warehouse.builder import build_data_warehouse_config
@@ -175,7 +176,9 @@ def delete_connection(db: Session, connection_id: str) -> None:
     db.commit()
 
 
-def activate_connection(db: Session, connection_id: str) -> tuple[DataWarehouseConnection, ConnectionRuntimeApplyStatus]:
+def activate_connection(
+    db: Session, connection_id: str
+) -> tuple[DataWarehouseConnection, ConnectionRuntimeApplyStatus]:
     row = get_connection(db, connection_id)
     previous_active = (
         db.query(DataWarehouseConnection)
@@ -308,6 +311,22 @@ def _apply_connection_to_runtime(
     # so any stale graph must not be served even if the live-apply above failed
     # (e.g. openchatbi config isn't loaded in this process yet).
     invalidate_all_graphs()
+    # Checkpoint threads hold Text2SQL / interrupt state tied to the *previous*
+    # warehouse. Clear them only after a successful live switch — never on
+    # catalog-sync rollback (would wipe still-valid previous-warehouse threads)
+    # and never on startup re-apply (sync_schema=False).
+    if sync_schema and not revert_activation and status.catalog_sync_status == "success":
+        try:
+            cleared = clear_all_checkpoint_threads_sync()
+            logger.info(
+                "Cleared %s LangGraph checkpoint thread(s) after warehouse activation",
+                cleared,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Warehouse activated but clearing checkpoint threads failed: %s",
+                exc,
+            )
     return status, revert_activation
 
 

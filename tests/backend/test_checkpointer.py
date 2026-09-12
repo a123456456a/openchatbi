@@ -11,7 +11,10 @@ from typing_extensions import TypedDict
 
 from backend.llm.checkpointer import (
     cleanup_async_checkpointer,
+    clear_all_checkpoint_threads,
+    clear_all_checkpoint_threads_sync,
     get_async_checkpointer,
+    list_checkpoint_thread_ids,
     reset_async_checkpointer_for_tests,
 )
 
@@ -125,3 +128,46 @@ def test_interrupt_survives_process_restart(checkpointer_env: Path):
         assert done.values["value"] == "hi-yes"
 
     asyncio.run(run())
+
+
+def test_clear_all_checkpoint_threads_removes_every_user_thread(checkpointer_env: Path):
+    """Warehouse is global: clearing drops all users' threads, including analysis children."""
+
+    async def run():
+        cp = await get_async_checkpointer()
+        graph = _build_graph(cp)
+        for tid in ("user-a-default", "user-b-default", "user-a-default:data_analysis"):
+            await graph.ainvoke({"value": "x"}, config={"configurable": {"thread_id": tid}})
+        ids = await list_checkpoint_thread_ids()
+        assert ids == {"user-a-default", "user-b-default", "user-a-default:data_analysis"}
+
+        cleared = await clear_all_checkpoint_threads()
+        assert cleared == 3
+        assert await list_checkpoint_thread_ids() == set()
+        for tid in ("user-a-default", "user-b-default", "user-a-default:data_analysis"):
+            state = await graph.aget_state({"configurable": {"thread_id": tid}})
+            assert state.values == {} or state.values.get("value") is None
+
+    asyncio.run(run())
+
+
+def test_clear_all_checkpoint_threads_sync_sqlite(checkpointer_env: Path):
+    """Sync Sqlite path deletes without requiring an async checkpointer cache."""
+
+    async def seed():
+        cp = await get_async_checkpointer()
+        graph = _build_graph(cp)
+        await graph.ainvoke({"value": "seed"}, config={"configurable": {"thread_id": "u1-s1"}})
+        await graph.ainvoke({"value": "seed"}, config={"configurable": {"thread_id": "u2-s2"}})
+
+    asyncio.run(seed())
+    asyncio.run(cleanup_async_checkpointer())
+    reset_async_checkpointer_for_tests()
+
+    cleared = clear_all_checkpoint_threads_sync()
+    assert cleared == 2
+
+    async def assert_empty():
+        assert await list_checkpoint_thread_ids() == set()
+
+    asyncio.run(assert_empty())
