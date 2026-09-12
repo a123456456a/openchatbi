@@ -377,7 +377,9 @@ def test_activate_success_clears_checkpoint_threads(client):
     ):
         r = client.post(f"/api/admin/database-connections/{a['id']}/activate", headers=_auth(tok["access_token"]))
     assert r.status_code == 200
-    assert r.json()["runtime_apply"]["catalog_sync_status"] == "success"
+    apply_status = r.json()["runtime_apply"]
+    assert apply_status["catalog_sync_status"] == "success"
+    assert apply_status["message"] == "已切换数仓，进行中的对话上下文已重置"
     clear_mock.assert_called_once_with()
 
 

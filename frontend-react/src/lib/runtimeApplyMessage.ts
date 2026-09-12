@@ -22,8 +22,8 @@ export function runtimeApplyNotice(status: ConnectionRuntimeApplyStatus): Runtim
   if (status.catalog_sync_status === 'success' && status.index_reload_status === 'success') {
     return {
       tone: 'success',
-      text: '成功：数仓已激活，catalog 已同步并重建索引',
+      text: status.message || '已切换数仓，进行中的对话上下文已重置',
     }
   }
-  return { tone: 'success', text: '数仓已激活' }
+  return { tone: 'success', text: status.message || '数仓已激活' }
 }
