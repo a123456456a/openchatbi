@@ -7,6 +7,7 @@ vi.mock('@/api/chat', () => ({
 }))
 
 import { abortChatInterrupt, streamChat } from '@/api/chat'
+import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import InterruptPrompt from './InterruptPrompt'
@@ -14,6 +15,7 @@ import InterruptPrompt from './InterruptPrompt'
 describe('InterruptPrompt', () => {
   beforeEach(() => {
     localStorage.clear()
+    useAuthStore.setState({ role: 'analyst', isAuthenticated: true, accessToken: 't', userId: 'u', username: 'a' })
     useSessionsStore.setState({ activeUserId: null, sessions: [] })
     useSessionsStore.getState().bindUser('test-user')
     useChatStore.setState({
