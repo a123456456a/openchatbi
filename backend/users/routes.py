@@ -1,10 +1,10 @@
 """Admin user CRUD and ownership-scoped report download."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from backend.auth.deps import require_roles
-from backend.auth.models import Role, User
+from backend.auth.models import RefreshToken, Role, User, UserLlmConfig
 from backend.auth.passwords import hash_password
 from backend.db import get_db
 from backend.users.schemas import UserCreate, UserOut, UserUpdate
@@ -72,6 +72,44 @@ def update_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+@users_router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(
+    user_id: str,
+    admin: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Hard-delete a user row (and auth/LLM config children).
+
+    Deactivate remains available via PATCH ``is_active``. Delete removes the
+    account so the username can be reused. Child rows in ``refresh_tokens`` and
+    ``user_llm_configs`` are removed first (simple schema; no retention FKs).
+    """
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.role == Role.admin.value:
+        other_admins = (
+            db.query(User)
+            .filter(User.role == Role.admin.value, User.id != user_id)
+            .count()
+        )
+        if other_admins == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete the last admin",
+            )
+    if user_id == admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete yourself",
+        )
+    db.query(RefreshToken).filter(RefreshToken.user_id == user_id).delete(synchronize_session=False)
+    db.query(UserLlmConfig).filter(UserLlmConfig.user_id == user_id).delete(synchronize_session=False)
+    db.delete(user)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @download_router.get("/report/{filename}")

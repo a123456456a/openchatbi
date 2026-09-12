@@ -4,7 +4,8 @@ import { ElMessage } from 'element-plus'
 import { Plus, User } from '@element-plus/icons-vue'
 
 import AppShell from '../../components/layout/AppShell.vue'
-import { createUser, listUsers, patchUser, type UserOut } from '../../api/users'
+import { createUser, deleteUser, listUsers, patchUser, type UserOut } from '../../api/users'
+import { useAuthStore } from '../../stores/auth'
 
 const loading = ref(false)
 const users = ref<UserOut[]>([])
@@ -14,6 +15,22 @@ const form = reactive({
   password: '',
   role: 'analyst',
 })
+const auth = useAuthStore()
+
+function isSelf(row: UserOut) {
+  return !!auth.userId && row.id === auth.userId
+}
+
+function isLastAdmin(row: UserOut) {
+  if (row.role !== 'admin') return false
+  return users.value.filter((u) => u.role === 'admin').length <= 1
+}
+
+function deleteDisabledReason(row: UserOut): string | undefined {
+  if (isSelf(row)) return '不能删除当前登录账号'
+  if (isLastAdmin(row)) return '必须保留至少一名管理员'
+  return undefined
+}
 
 async function refresh() {
   loading.value = true
@@ -63,6 +80,21 @@ async function changeRole(row: UserOut, role: string) {
     ElMessage.error(e instanceof Error ? e.message : '更新失败')
   }
 }
+
+async function onDelete(row: UserOut) {
+  const reason = deleteDisabledReason(row)
+  if (reason) {
+    ElMessage.warning(reason)
+    return
+  }
+  try {
+    await deleteUser(row.id)
+    ElMessage.success('已删除用户')
+    await refresh()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '删除失败')
+  }
+}
 </script>
 
 <template>
@@ -82,7 +114,7 @@ async function changeRole(row: UserOut, role: string) {
                 用户管理
               </h1>
               <p class="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
-                管理账号角色与启用状态
+                管理账号角色、启用状态与删除
               </p>
             </div>
           </div>
@@ -117,10 +149,20 @@ async function changeRole(row: UserOut, role: string) {
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="120">
+            <el-table-column label="操作" width="180" align="right">
               <template #default="{ row }">
                 <el-button size="small" link type="primary" @click="toggleActive(row)">
                   {{ row.is_active ? '停用' : '启用' }}
+                </el-button>
+                <el-button
+                  size="small"
+                  link
+                  type="danger"
+                  :disabled="!!deleteDisabledReason(row)"
+                  :title="deleteDisabledReason(row)"
+                  @click="onDelete(row)"
+                >
+                  删除
                 </el-button>
               </template>
             </el-table-column>

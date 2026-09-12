@@ -39,3 +39,10 @@ export function patchUser(id: string, body: UserUpdate) {
     body: JSON.stringify(body),
   })
 }
+
+export function deleteUser(id: string) {
+  return httpJson<void>(`/api/users/${id}`, {
+    method: 'DELETE',
+  })
+}
+
