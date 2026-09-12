@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 
 import {
   activateDatabaseConnection,
+  applyCanonicalActive,
   deleteDatabaseConnection,
   fetchDatabaseConnections,
   type DatabaseConnection,
@@ -34,17 +35,19 @@ export default function DatabasesPage() {
     null,
   )
 
-  async function refresh() {
-    setLoading(true)
+  async function refresh(opts?: { quiet?: boolean }) {
+    if (!opts?.quiet) setLoading(true)
     setError(null)
     try {
       const res = await fetchDatabaseConnections()
-      setRows(res.connections)
+      // Canonical active id — not the activate payload alone — drives list badges
+      // after sync-failure rollback (#19).
+      setRows(applyCanonicalActive(res.connections, res.active_connection_id))
       setCatalog(res.catalog)
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败')
     } finally {
-      setLoading(false)
+      if (!opts?.quiet) setLoading(false)
     }
   }
 
@@ -71,7 +74,9 @@ export default function DatabasesPage() {
       if (updated.runtime_apply) {
         setActivateNotice(runtimeApplyNotice(updated.runtime_apply))
       }
-      await refresh()
+      // Always re-list after activate (incl. sync-fail rollback). Do not merge the
+      // single activate row into local state — that omits restoring previous active.
+      await refresh({ quiet: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : '切换失败')
     } finally {

@@ -6,6 +6,7 @@ import { Connection, Plus } from '@element-plus/icons-vue'
 import AppShell from '../../components/layout/AppShell.vue'
 import {
   activateDatabaseConnection,
+  applyCanonicalActive,
   createDatabaseConnection,
   deleteDatabaseConnection,
   fetchDatabaseConnections,
@@ -75,16 +76,18 @@ function connectionSummary(row: DatabaseConnection): string {
   return parts.join('') || '—'
 }
 
-async function refresh() {
-  loading.value = true
+async function refresh(opts?: { quiet?: boolean }) {
+  if (!opts?.quiet) loading.value = true
   try {
     const res = await fetchDatabaseConnections()
-    rows.value = res.connections
+    // Prefer list active_connection_id so a rolled-back activate target never
+    // stays marked 「当前使用」 if row.is_active were stale.
+    rows.value = applyCanonicalActive(res.connections, res.active_connection_id)
     catalog.value = res.catalog
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
-    loading.value = false
+    if (!opts?.quiet) loading.value = false
   }
 }
 
@@ -205,7 +208,8 @@ async function onActivate(row: DatabaseConnection) {
     } else {
       ElMessage.success(notice?.text ?? `已切换为「${row.name}」`)
     }
-    await refresh()
+    // Always re-list (incl. sync-fail rollback); do not patch from activate row alone.
+    await refresh({ quiet: true })
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '切换失败')
   } finally {

@@ -46,6 +46,18 @@ export type DatabaseConnectionsResponse = {
   active_connection_id: string | null
 }
 
+/** Prefer list ``active_connection_id`` over per-row flags so a rolled-back
+ * activate target never appears as 「当前使用」 if row.is_active is stale. */
+export function applyCanonicalActive(
+  connections: DatabaseConnection[],
+  activeConnectionId: string | null,
+): DatabaseConnection[] {
+  return connections.map((row) => ({
+    ...row,
+    is_active: activeConnectionId !== null && row.id === activeConnectionId,
+  }))
+}
+
 export type DatabaseConnectionInput = {
   name: string
   dialect: string
