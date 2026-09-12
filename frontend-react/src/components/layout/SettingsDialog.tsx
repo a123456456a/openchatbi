@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useSettingsStore, type SettingsForm } from '@/stores/settings'
+import { useAuthStore } from '@/stores/auth'
+import { canManageLlm, VIEWER_READONLY_DETAIL } from '@/lib/roles'
 import type { LlmCatalogItem, LlmConfigRow } from '@/api/llmSettings'
 
 const emptyForm: SettingsForm = { provider: '', api_key: '', model: '', base_url: '' }
@@ -18,6 +20,8 @@ export default function SettingsDialog() {
   const catalog = useSettingsStore((s) => s.catalog)
   const configs = useSettingsStore((s) => s.configs)
   const loading = useSettingsStore((s) => s.loading)
+  const role = useAuthStore((s) => s.role)
+  const allowEdit = canManageLlm(role)
 
   const [form, setForm] = useState<SettingsForm>(emptyForm)
   const [saving, setSaving] = useState(false)
@@ -136,6 +140,17 @@ export default function SettingsDialog() {
           <DialogTitle>模型设置</DialogTitle>
         </DialogHeader>
 
+        {!allowEdit ? (
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--color-muted-foreground)]">{VIEWER_READONLY_DETAIL}</p>
+            <DialogFooter>
+              <Button variant="outline" onClick={closeSettings}>
+                关闭
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+        <>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label>供应商</Label>
@@ -206,6 +221,8 @@ export default function SettingsDialog() {
             {saveHint && !canSave && <p className="text-xs text-slate-500">{saveHint}</p>}
           </div>
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   )

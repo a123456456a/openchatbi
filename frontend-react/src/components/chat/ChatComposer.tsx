@@ -35,6 +35,7 @@ export default function ChatComposer({
   onStop,
   onNewChat,
   sendDisabled = false,
+  readOnly = false,
   autoFocus,
   placeholder = '输入数据分析问题，例如：上周销售额按品类汇总…',
   className,
@@ -48,6 +49,8 @@ export default function ChatComposer({
   onNewChat?: () => void
   /** When true (e.g. stale warehouse banner visible), block send / Enter; new-chat stays available. */
   sendDisabled?: boolean
+  /** viewer: hide send / model / stop; history stays readable elsewhere. */
+  readOnly?: boolean
   autoFocus?: boolean
   placeholder?: string
   className?: string
@@ -57,6 +60,16 @@ export default function ChatComposer({
   const probeRef = useRef<HTMLTextAreaElement>(null)
   const [multiline, setMultiline] = useState(false)
   const multilineRef = useRef(false)
+
+  if (readOnly) {
+    return (
+      <div className={cn('w-full', className)}>
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-muted)]/40 px-4 py-3 text-sm text-[var(--color-muted-foreground)]">
+          当前账号为只读，可查看历史会话，无法提问或修改模型设置。
+        </div>
+      </div>
+    )
+  }
 
   /**
    * Cursor-like sticky multiline: once entered, stay until the input is cleared.

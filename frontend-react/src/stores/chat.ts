@@ -6,6 +6,7 @@ import { useAuthStore } from './auth'
 import { applyStreamEvent } from './chatEvents'
 import { useSessionsStore } from './sessions'
 import { useSettingsStore } from './settings'
+import { canAskData, VIEWER_READONLY_DETAIL } from '@/lib/roles'
 
 function uid() {
   return crypto.randomUUID()
@@ -74,6 +75,10 @@ export const useChatStore = create<ChatState>((set, get) => {
   },
 
   async send(sessionId, input) {
+    if (!canAskData(useAuthStore.getState().role)) {
+      set({ error: VIEWER_READONLY_DETAIL })
+      return
+    }
     if (!input.trim() || get().streaming) return
 
     const sessions = useSessionsStore.getState()
@@ -146,9 +151,13 @@ export const useChatStore = create<ChatState>((set, get) => {
       )
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return
-      const message = e instanceof Error ? e.message : String(e)
+      let message = e instanceof Error ? e.message : String(e)
+      if (message === 'Forbidden') message = VIEWER_READONLY_DETAIL
       if (isActive()) set({ error: message })
-      if (message === MISSING_LLM_SETTINGS_DETAIL) {
+      if (
+        message === MISSING_LLM_SETTINGS_DETAIL &&
+        canAskData(useAuthStore.getState().role)
+      ) {
         // No model provider configured for this account yet: open the settings
         // dialog directly so the user can pick and save a provider inline,
         // instead of only surfacing a dead-end error bubble in the chat.
