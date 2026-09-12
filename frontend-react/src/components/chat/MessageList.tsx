@@ -1,5 +1,7 @@
 import { Bot, Check, Copy } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
+import { useStickToBottom } from '@/hooks/useStickToBottom'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -57,8 +59,29 @@ function hasInlineArtifacts(m: ChatMessage): boolean {
 }
 
 export default function MessageList({ messages }: { messages: ChatMessage[] }) {
+  // Prefer content signature over length so streaming token updates also trigger stick scroll.
+  const watchKey = useMemo(
+    () =>
+      messages
+        .map((m) => `${m.id}:${m.content.length}:${m.thinking?.length ?? 0}:${m.steps.length}:${m.streaming ? 1 : 0}`)
+        .join('|'),
+    [messages],
+  )
+  const { containerRef, contentRef, onScroll, pinToBottom } = useStickToBottom(watchKey)
+
+  // New user turn should always pin to bottom (user just sent).
+  const lastUserId = [...messages].reverse().find((m) => m.role === 'user')?.id
+  useEffect(() => {
+    if (lastUserId) pinToBottom()
+  }, [lastUserId, pinToBottom])
+
   return (
-    <div className="scroll-thin chat-canvas-bg flex-1 space-y-6 overflow-y-auto px-6 py-6">
+    <div
+      ref={containerRef}
+      onScroll={onScroll}
+      className="scroll-thin chat-canvas-bg flex-1 space-y-6 overflow-y-auto px-6 py-6"
+    >
+      <div ref={contentRef} className="space-y-6">
       {messages.map((m) =>
         m.role === 'user' ? (
           <div key={m.id} className="msg-in relative z-10 ml-auto max-w-[75%]">
@@ -131,6 +154,7 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
           </div>
         ),
       )}
+      </div>
     </div>
   )
 }

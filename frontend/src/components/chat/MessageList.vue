@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ChatDotRound, CircleCheck, DocumentCopy } from '@element-plus/icons-vue'
+
+import { useStickToBottom } from '../../composables/useStickToBottom'
 
 import ChartView from './ChartView.vue'
 import FileDownloadCard from './FileDownloadCard.vue'
@@ -16,11 +18,26 @@ import {
 } from '../../lib/chatSteps'
 import type { ChatMessage, ChatStep } from '../../types/stream'
 
-defineProps<{
+const props = defineProps<{
   messages: ChatMessage[]
 }>()
 
 const copiedId = ref<string | null>(null)
+
+const watchKey = computed(() =>
+  props.messages
+    .map((m) => `${m.id}:${m.content.length}:${m.thinking?.length ?? 0}:${m.steps.length}:${m.streaming ? 1 : 0}`)
+    .join('|'),
+)
+
+const { containerRef, contentRef, onScroll, pinToBottom } = useStickToBottom(watchKey)
+
+const lastUserId = computed(
+  () => [...props.messages].reverse().find((m) => m.role === 'user')?.id ?? null,
+)
+watch(lastUserId, (id) => {
+  if (id) pinToBottom()
+})
 
 async function copyContent(id: string, text: string) {
   try {
@@ -50,8 +67,13 @@ function hasInlineArtifacts(m: ChatMessage): boolean {
 </script>
 
 <template>
-  <div class="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-    <template v-for="m in messages" :key="m.id">
+  <div
+    ref="containerRef"
+    class="flex-1 overflow-y-auto px-6 py-6"
+    @scroll="onScroll"
+  >
+    <div ref="contentRef" class="space-y-6">
+    <template v-for="m in props.messages" :key="m.id">
       <div v-if="m.role === 'user'" class="ml-auto max-w-[75%]">
         <div class="rounded-2xl rounded-tr-sm bg-slate-100 px-4 py-2.5 text-sm text-slate-900">
           <Markdown :text="m.content" />
@@ -114,5 +136,6 @@ function hasInlineArtifacts(m: ChatMessage): boolean {
         </div>
       </div>
     </template>
+    </div>
   </div>
 </template>
